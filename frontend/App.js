@@ -1,35 +1,44 @@
 import React, { useState, useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 
 import LoginScreen from './src/screens/Auth/LoginScreen';
+import RegisterScreen from './src/screens/Auth/RegisterScreen';
 import AppNavigator from './src/navigation/AppNavigator';
 
+const AuthStack = createNativeStackNavigator();
+
 export default function App() {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        AsyncStorage.getItem('token').then((token) => {
-            if (token) setIsAuthenticated(true);
-            setLoading(false);
-        });
-    }, []);
+  useEffect(() => {
+    AsyncStorage.getItem('token').then((token) => {
+      if (token) setIsAuthenticated(true);
+      setLoading(false);
+    });
+  }, []);
 
-    if (loading) return null;
+  if (loading) return null;
 
-    return (
-        <SafeAreaProvider>
-            <StatusBar style="dark" />
-            <NavigationContainer>
-                {isAuthenticated ? (
-                    <AppNavigator onLogout={() => setIsAuthenticated(false)} />
-                ) : (
-                    <LoginScreen onLoginSuccess={() => setIsAuthenticated(true)} />
-                )}
-            </NavigationContainer>
-        </SafeAreaProvider>
-    );
+  return (
+    <SafeAreaProvider>
+      <StatusBar style="dark" />
+      <NavigationContainer>
+        {isAuthenticated ? (
+          <AppNavigator onLogout={() => setIsAuthenticated(false)} />
+        ) : (
+          <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+            <AuthStack.Screen name="Login">
+              {(props) => <LoginScreen {...props} onLoginSuccess={() => setIsAuthenticated(true)} />}
+            </AuthStack.Screen>
+            <AuthStack.Screen name="Register" component={RegisterScreen} />
+          </AuthStack.Navigator>
+        )}
+      </NavigationContainer>
+    </SafeAreaProvider>
+  );
 }
