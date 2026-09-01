@@ -11,6 +11,8 @@ export default function RegisterScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
+  const [statusType, setStatusType] = useState('');
 
   const handleRegister = async () => {
     if (!fullName.trim() || !email.trim() || !password) {
@@ -30,13 +32,29 @@ export default function RegisterScreen({ navigation }) {
         password: password,
       });
 
-      if (res.data.success) {
-        Alert.alert('Thành công', 'Đăng ký tài khoản thành công! Vui lòng đăng nhập.', [
-          { text: 'Đăng nhập ngay', onPress: () => navigation.navigate('Login') }
+      if (res?.data?.success) {
+        const successText = res?.data?.message || 'Đăng ký tài khoản thành công! Vui lòng đăng nhập.';
+        setStatusType('success');
+        setStatusMessage(successText);
+
+        Alert.alert('Thành công', successText, [
+          {
+            text: 'Đăng nhập ngay',
+            onPress: () => setTimeout(() => navigation.navigate('Login'), 300),
+          }
         ]);
+        return;
       }
+
+      const errorText = res?.data?.message || 'Đăng ký không thành công, vui lòng thử lại';
+      setStatusType('error');
+      setStatusMessage(errorText);
+      Alert.alert('Thông báo', errorText);
     } catch (err) {
-      Alert.alert('Lỗi đăng ký', err.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại');
+      const errorText = err.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại';
+      setStatusType('error');
+      setStatusMessage(errorText);
+      Alert.alert('Lỗi đăng ký', errorText);
     } finally {
       setLoading(false);
     }
@@ -48,6 +66,12 @@ export default function RegisterScreen({ navigation }) {
         <View style={styles.card}>
           <Text style={styles.title}>Tạo Tài Khoản 🐾</Text>
           <Text style={styles.subtitle}>Bắt đầu chăm sóc và theo dõi sức khỏe thú cưng</Text>
+
+          {statusMessage ? (
+            <View style={[styles.statusBox, statusType === 'success' ? styles.statusSuccess : styles.statusError]}>
+              <Text style={styles.statusText}>{statusMessage}</Text>
+            </View>
+          ) : null}
 
           <TextInput
             placeholder="Họ và tên của bạn"
@@ -120,6 +144,25 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 26, fontWeight: 'bold', color: COLORS.primary, textAlign: 'center' },
   subtitle: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', marginBottom: 20, marginTop: 4 },
+  statusBox: {
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  statusSuccess: {
+    backgroundColor: '#E8F8EE',
+    borderColor: '#2E9E5A',
+  },
+  statusError: {
+    backgroundColor: '#FDECEC',
+    borderColor: '#D94A4A',
+  },
+  statusText: {
+    color: '#1E1E1E',
+    fontSize: 13,
+    textAlign: 'center',
+  },
   input: {
     backgroundColor: COLORS.background,
     borderWidth: 1,

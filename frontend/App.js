@@ -11,6 +11,24 @@ import AppNavigator from './src/navigation/AppNavigator';
 
 const AuthStack = createNativeStackNavigator();
 
+// Deep Linking Configuration - URL will sync with navigation
+const linking = {
+  prefixes: ['petcare://', 'https://petcare.app', 'http://localhost:19006'],
+  config: {
+    screens: {
+      Login: 'login',
+      Register: 'register',
+      Home: 'home',
+      Hospital: 'hospital',
+      Booking: 'booking/:roomId?',
+      AIChat: 'ai-chat',
+      Appointments: 'appointments',
+      Profile: 'profile',
+      NotFound: '*',
+    },
+  },
+};
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -27,7 +45,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
-      <NavigationContainer>
+      <NavigationContainer linking={linking} fallback={<></>}>
         {isAuthenticated ? (
           <AppNavigator onLogout={() => setIsAuthenticated(false)} />
         ) : (
