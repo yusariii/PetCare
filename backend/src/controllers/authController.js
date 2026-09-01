@@ -26,7 +26,11 @@ exports.register = async (req, res) => {
       data: { userId: result.insertId }
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error('REGISTER_ERROR:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Không thể đăng ký tài khoản. Vui lòng kiểm tra kết nối database hoặc thông tin cấu hình.'
+    });
   }
 };
 
