@@ -16,15 +16,15 @@ const initDatabase = async () => {
 
     // Tạo database
     await connection.execute(`
-      CREATE DATABASE IF NOT EXISTS pet_hospital_db
+      CREATE DATABASE IF NOT EXISTS pet_care_db
       CHARACTER SET utf8mb4 
       COLLATE utf8mb4_unicode_ci
     `);
 
-    console.log('✅ Database pet_hospital_db được tạo/đã tồn tại');
+    console.log('✅ Database pet_care_db được tạo/đã tồn tại');
 
     // Sử dụng database
-    await connection.execute('USE pet_hospital_db');
+    await connection.execute('USE pet_care_db');
 
     // 1. Bảng Users
     await connection.execute(`
