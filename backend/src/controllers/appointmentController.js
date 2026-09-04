@@ -33,13 +33,19 @@ exports.createAppointment = async (req, res) => {
     const {
       pet_id,
       service_id,
+      service_ids,
       room_id,
       appointment_datetime,
       notes
     } = req.body;
 
+    const serviceIds = Array.isArray(service_ids)
+      ? [...new Set(service_ids.map(Number).filter(Number.isInteger))]
+      : [Number(service_id)];
+    const primaryServiceId = serviceIds[0];
+
     // Validate required fields
-    if (!pet_id || !service_id || !room_id || !appointment_datetime) {
+    if (!pet_id || !primaryServiceId || !room_id || !appointment_datetime || serviceIds.length === 0) {
       return res.status(400).json({
         success: false,
         message: 'Vui lòng điền đủ thông tin bắt buộc'
@@ -85,11 +91,12 @@ exports.createAppointment = async (req, res) => {
     const room = rooms[0];
 
     // Verify service belongs to room
+    const servicePlaceholders = serviceIds.map(() => '?').join(',');
     const [services] = await db.query(
-      'SELECT id FROM Services WHERE id = ? AND room_id = ?',
-      [service_id, room_id]
+      `SELECT id FROM Services WHERE id IN (${servicePlaceholders}) AND room_id = ?`,
+      [...serviceIds, room_id]
     );
-    if (services.length === 0) {
+    if (services.length !== serviceIds.length) {
       return res.status(400).json({
         success: false,
         message: 'Dịch vụ không tồn tại cho phòng khám này'
@@ -111,12 +118,31 @@ exports.createAppointment = async (req, res) => {
       });
     }
 
-    // Create appointment
-    const [result] = await db.query(`
-      INSERT INTO Appointments
-      (user_id, pet_id, room_id, service_id, appointment_datetime, status, notes)
-      VALUES (?, ?, ?, ?, ?, 'pending', ?)
-    `, [req.user.id, pet_id, room_id, service_id, appointment_datetime, notes || null]);
+    // Create one appointment and attach any additional services to it.
+    const connection = await db.getConnection();
+    let result;
+    try {
+      await connection.beginTransaction();
+      [result] = await connection.query(`
+        INSERT INTO Appointments
+        (user_id, pet_id, room_id, service_id, appointment_datetime, status, notes)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?)
+      `, [req.user.id, pet_id, room_id, primaryServiceId, appointment_datetime, notes || null]);
+
+      if (serviceIds.length > 1) {
+        const values = serviceIds.slice(1).map((id) => [result.insertId, id]);
+        await connection.query(
+          'INSERT INTO Appointment_Services (appointment_id, service_id) VALUES ?',
+          [values]
+        );
+      }
+      await connection.commit();
+    } catch (transactionError) {
+      await connection.rollback();
+      throw transactionError;
+    } finally {
+      connection.release();
+    }
 
     return res.status(201).json({
       success: true,
@@ -150,13 +176,20 @@ exports.getMyAppointments = async (req, res) => {
         p.species,
         cr.room_code,
         cr.room_name,
-        s.service_name,
-        s.price,
+        (SELECT GROUP_CONCAT(DISTINCT service_name ORDER BY service_name SEPARATOR ', ')
+         FROM Services
+         WHERE id = a.service_id OR id IN (
+           SELECT service_id FROM Appointment_Services WHERE appointment_id = a.id
+         )) as service_name,
+        (SELECT SUM(price)
+         FROM Services
+         WHERE id = a.service_id OR id IN (
+           SELECT service_id FROM Appointment_Services WHERE appointment_id = a.id
+         )) as price,
         CONCAT(u.full_name, ' (', u.phone, ')') as doctor_info
       FROM Appointments a
       JOIN Pets p ON a.pet_id = p.id
       JOIN Clinic_Rooms cr ON a.room_id = cr.id
-      JOIN Services s ON a.service_id = s.id
       LEFT JOIN Users u ON a.doctor_id = u.id
       WHERE a.user_id = ?
       ORDER BY a.appointment_datetime DESC
@@ -197,13 +230,20 @@ exports.getAllAppointments = async (req, res) => {
         p.weight_kg,
         cr.room_code,
         cr.room_name,
-        s.service_name,
-        s.price,
+        (SELECT GROUP_CONCAT(DISTINCT service_name ORDER BY service_name SEPARATOR ', ')
+         FROM Services
+         WHERE id = a.service_id OR id IN (
+           SELECT service_id FROM Appointment_Services WHERE appointment_id = a.id
+         )) as service_name,
+        (SELECT SUM(price)
+         FROM Services
+         WHERE id = a.service_id OR id IN (
+           SELECT service_id FROM Appointment_Services WHERE appointment_id = a.id
+         )) as price,
         CONCAT(u.full_name, ' (', u.phone, ')') as customer_info
       FROM Appointments a
       JOIN Pets p ON a.pet_id = p.id
       JOIN Clinic_Rooms cr ON a.room_id = cr.id
-      JOIN Services s ON a.service_id = s.id
       JOIN Users u ON a.user_id = u.id
       WHERE 1=1
     `;
