@@ -7,21 +7,39 @@ const db = require('../config/db');
 exports.getAllRooms = async (req, res) => {
   try {
     const [rooms] = await db.query(`
-      SELECT 
-        r.id, r.room_code, r.room_name, r.floor, 
-        r.coordinate_x, r.coordinate_y, r.max_slot_per_hour, r.description,
-        COALESCE(JSON_ARRAYAGG(JSON_OBJECT(
-          'id', s.id,
-          'service_name', s.service_name,
-          'description', s.description,
-          'price', s.price,
-          'duration_minutes', s.duration_minutes
-        )), JSON_ARRAY()) as services
-      FROM Clinic_Rooms r
-      LEFT JOIN Services s ON r.id = s.room_id
-      GROUP BY r.id
-      ORDER BY r.floor, r.coordinate_x
+      SELECT
+        id, room_code, room_name, floor,
+        coordinate_x, coordinate_y, max_slot_per_hour, description
+      FROM Clinic_Rooms
+      ORDER BY floor, coordinate_x
     `);
+
+    if (rooms.length > 0) {
+      const roomIds = rooms.map((room) => room.id);
+      const placeholders = roomIds.map(() => '?').join(',');
+      const [services] = await db.query(`
+        SELECT id, room_id, service_name, description, price, duration_minutes
+        FROM Services
+        WHERE room_id IN (${placeholders})
+        ORDER BY service_name
+      `, roomIds);
+
+      const servicesByRoom = services.reduce((grouped, service) => {
+        if (!grouped[service.room_id]) grouped[service.room_id] = [];
+        grouped[service.room_id].push({
+          id: service.id,
+          service_name: service.service_name,
+          description: service.description,
+          price: service.price,
+          duration_minutes: service.duration_minutes
+        });
+        return grouped;
+      }, {});
+
+      rooms.forEach((room) => {
+        room.services = servicesByRoom[room.id] || [];
+      });
+    }
 
     return res.status(200).json({ 
       success: true, 
