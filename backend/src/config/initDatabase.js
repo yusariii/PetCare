@@ -8,7 +8,7 @@ const initDatabase = async () => {
     connection = await mysql.createConnection({
       host: process.env.DB_HOST || 'localhost',
       user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || '',
+      password: process.env.DB_PASSWORD || process.env.DB_PASS || '',
       port: Number(process.env.DB_PORT) || 3306,
     });
 
@@ -24,7 +24,7 @@ const initDatabase = async () => {
     console.log('✅ Database pet_care_db được tạo/đã tồn tại');
 
     // Sử dụng database
-    await connection.execute('USE pet_care_db');
+    await connection.query('USE pet_care_db');
 
     // 1. Bảng Users
     await connection.execute(`
@@ -116,6 +116,19 @@ const initDatabase = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ Bảng Appointments được tạo');
+
+    // 5b. Các dịch vụ bổ sung trong cùng một lịch hẹn
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS Appointment_Services (
+        appointment_id INT NOT NULL,
+        service_id INT NOT NULL,
+        PRIMARY KEY (appointment_id, service_id),
+        FOREIGN KEY (appointment_id) REFERENCES Appointments(id) ON DELETE CASCADE,
+        FOREIGN KEY (service_id) REFERENCES Services(id) ON DELETE RESTRICT,
+        INDEX idx_appointment_services_service_id (service_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Bảng Appointment_Services được tạo');
 
     // 6. Bảng Health_Records
     await connection.execute(`

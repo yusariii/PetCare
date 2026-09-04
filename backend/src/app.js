@@ -9,6 +9,8 @@ const roomRoutes = require('./routes/roomRoutes');
 const healthRecordRoutes = require('./routes/healthRecordRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const { initCronJobs } = require('./services/cronService');
+const initDatabase = require('./config/initDatabase');
+const seedData = require('./config/seedData');
 
 const app = express();
 
@@ -58,16 +60,24 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Initialize cron jobs
-initCronJobs();
-
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`
+const startServer = async () => {
+  await initDatabase();
+  await seedData();
+  initCronJobs();
+
+  app.listen(PORT, () => {
+    console.log(`
 ╔══════════════════════════════════════════════════════╗
 ║   🏥 Pet Care Hospital Management System            ║
 ║   🚀 Server chạy tại http://localhost:${PORT}          ║
 ║   📊 Environment: ${process.env.NODE_ENV || 'development'}                    ║
 ╚══════════════════════════════════════════════════════╝
-  `);
+    `);
+  });
+};
+
+startServer().catch((error) => {
+  console.error('❌ Không thể khởi động backend:', error.message);
+  process.exit(1);
 });
