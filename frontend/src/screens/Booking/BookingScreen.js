@@ -15,7 +15,7 @@ export default function BookingScreen({ route, navigation }) {
   
   // Selected values
   const [selectedRoom, setSelectedRoom] = useState(route?.params?.selectedRoomId || null);
-  const [selectedService, setSelectedService] = useState(null);
+  const [selectedServices, setSelectedServices] = useState([]);
   const [selectedPet, setSelectedPet] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
@@ -86,7 +86,7 @@ export default function BookingScreen({ route, navigation }) {
       const response = await getRoomServicesApi(roomId);
       if (response.data.success) {
         setServices(response.data.data || []);
-        setSelectedService(null);
+        setSelectedServices([]);
         setAvailability([]);
       }
     } catch (err) {
@@ -121,7 +121,7 @@ export default function BookingScreen({ route, navigation }) {
   };
 
   const handleBooking = async () => {
-    if (!selectedPet || !selectedRoom || !selectedService || !selectedDate || !selectedTime) {
+    if (!selectedPet || !selectedRoom || selectedServices.length === 0 || !selectedDate || !selectedTime) {
       Alert.alert('Thông báo', 'Vui lòng chọn đầy đủ thông tin');
       return;
     }
@@ -136,7 +136,8 @@ export default function BookingScreen({ route, navigation }) {
       const response = await createAppointmentApi({
         pet_id: selectedPet,
         room_id: selectedRoom,
-        service_id: selectedService,
+        service_id: selectedServices[0],
+        service_ids: selectedServices,
         appointment_datetime: appointmentDatetime,
         notes: notes || null
       });
@@ -166,7 +167,7 @@ export default function BookingScreen({ route, navigation }) {
   }
 
   const selectedRoomObj = rooms.find(r => r.id === selectedRoom);
-  const selectedServiceObj = services.find(s => s.id === selectedService);
+  const selectedServiceObjs = services.filter(service => selectedServices.includes(service.id));
   const selectedPetObj = pets.find(p => p.id === selectedPet);
 
   return (
@@ -177,11 +178,11 @@ export default function BookingScreen({ route, navigation }) {
           <Text style={styles.subtitle}>Chọn phòng khám, dịch vụ và thời gian</Text>
         </View>
 
-        {error && (
+        {error ? (
           <View style={styles.errorBox}>
             <Text style={styles.errorText}>❌ {error}</Text>
           </View>
-        )}
+        ) : null}
 
         {/* Thú cưng */}
         <View style={styles.section}>
@@ -224,9 +225,13 @@ export default function BookingScreen({ route, navigation }) {
                     key={service.id}
                     style={[
                       styles.serviceCard,
-                      selectedService === service.id && styles.serviceCardActive
+                      selectedServices.includes(service.id) && styles.serviceCardActive
                     ]}
-                    onPress={() => setSelectedService(service.id)}
+                    onPress={() => {
+                      setSelectedServices(current => current.includes(service.id)
+                        ? current.filter(id => id !== service.id)
+                        : [...current, service.id]);
+                    }}
                   >
                     <View style={styles.serviceInfo}>
                       <Text style={styles.serviceName}>{service.service_name}</Text>
@@ -234,11 +239,16 @@ export default function BookingScreen({ route, navigation }) {
                         ⏱️ {service.duration_minutes}min • 💰 {service.price.toLocaleString('vi-VN')}đ
                       </Text>
                     </View>
-                    {selectedService === service.id && (
+                    {selectedServices.includes(service.id) && (
                       <Text style={styles.checkmark}>✓</Text>
                     )}
                   </TouchableOpacity>
                 ))}
+                {selectedServiceObjs.length > 0 && (
+                  <Text style={styles.selectedServicesText}>
+                    Đã chọn {selectedServiceObjs.length} dịch vụ • {selectedServiceObjs.reduce((total, service) => total + Number(service.price || 0), 0).toLocaleString('vi-VN')}đ
+                  </Text>
+                )}
               </View>
             )}
           </View>
@@ -306,7 +316,7 @@ export default function BookingScreen({ route, navigation }) {
         <TouchableOpacity
           style={[styles.bookButton, !selectedPet && styles.bookButtonDisabled]}
           onPress={handleBooking}
-          disabled={submitting || !selectedPet || !selectedRoom || !selectedService || !selectedDate || !selectedTime}
+          disabled={submitting || !selectedPet || !selectedRoom || selectedServices.length === 0 || !selectedDate || !selectedTime}
         >
           {submitting ? (
             <ActivityIndicator color="#fff" />
@@ -526,6 +536,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: COLORS.primary,
     fontWeight: 'bold',
+  },
+  selectedServicesText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.primary,
+    textAlign: 'right',
+    marginTop: 2,
   },
   timeGrid: {
     flexDirection: 'row',
