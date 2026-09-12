@@ -8,6 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import LoginScreen from './src/screens/Auth/LoginScreen';
 import RegisterScreen from './src/screens/Auth/RegisterScreen';
 import AppNavigator from './src/navigation/AppNavigator';
+import { onAuthFailure } from './src/api/client';
 
 const AuthStack = createNativeStackNavigator();
 
@@ -34,10 +35,13 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const unsubscribe = onAuthFailure(() => setIsAuthenticated(false));
     AsyncStorage.getItem('token').then((token) => {
       if (token) setIsAuthenticated(true);
       setLoading(false);
     });
+
+    return unsubscribe;
   }, []);
 
   if (loading) return null;

@@ -11,6 +11,13 @@ const client = axios.create({
   timeout: 15000,
 });
 
+const authFailureListeners = new Set();
+
+export const onAuthFailure = (listener) => {
+  authFailureListeners.add(listener);
+  return () => authFailureListeners.delete(listener);
+};
+
 // Request interceptor - Add token to all requests
 client.interceptors.request.use(async (config) => {
   const token = await AsyncStorage.getItem('token');
@@ -24,12 +31,14 @@ client.interceptors.request.use(async (config) => {
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
+    const isExpiredToken = error.response?.status === 401
+      || (error.response?.status === 403 && error.response?.data?.message?.includes('Token'));
+    if (isExpiredToken) {
       // Token expired or invalid
       await AsyncStorage.removeItem('token');
       await AsyncStorage.removeItem('user');
-      // Redirect to login will be handled by app state change
       console.warn('Token expired, user will be logged out');
+      authFailureListeners.forEach((listener) => listener());
     }
     return Promise.reject(error);
   }

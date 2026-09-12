@@ -12,7 +12,7 @@ exports.verifyToken = (req, res, next) => {
     req.user = decoded; // { id, email, role }
     next();
   } catch (error) {
-    return res.status(403).json({ success: false, message: 'Token không hợp lệ hoặc đã hết hạn' });
+    return res.status(401).json({ success: false, message: 'Token không hợp lệ hoặc đã hết hạn' });
   }
 };
 
