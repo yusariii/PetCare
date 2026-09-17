@@ -220,6 +220,7 @@ exports.getAllAppointments = async (req, res) => {
     let query = `
       SELECT
         a.id,
+        a.pet_id,
         a.appointment_datetime,
         a.status,
         a.notes,
@@ -299,7 +300,7 @@ exports.updateStatus = async (req, res) => {
 
     // Get current appointment
     const [appointments] = await db.query(
-      'SELECT status FROM Appointments WHERE id = ?',
+      'SELECT status, doctor_id FROM Appointments WHERE id = ?',
       [id]
     );
 
@@ -328,14 +329,13 @@ exports.updateStatus = async (req, res) => {
     }
 
     // Update appointment
-    const updateData = { status };
-    if (status === 'confirmed' && doctor_id) {
-      updateData.doctor_id = doctor_id;
-    }
+    const assignedDoctorId = status === 'confirmed'
+      ? (doctor_id || req.user.id)
+      : appointments[0].doctor_id;
 
     await db.query(
       'UPDATE Appointments SET status = ?, doctor_id = ? WHERE id = ?',
-      [status, updateData.doctor_id || null, id]
+      [status, assignedDoctorId, id]
     );
 
     return res.status(200).json({
