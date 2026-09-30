@@ -139,6 +139,72 @@ exports.getRoomAvailability = async (req, res) => {
 };
 
 /**
+ * BR08: Get live occupancy status for all rooms
+ * GET /api/rooms/live-occupancy
+ */
+exports.getLiveRoomsOccupancy = async (req, res) => {
+  try {
+    const [rooms] = await db.query(`
+      SELECT
+        id, room_code, room_name, floor,
+        coordinate_x, coordinate_y, max_slot_per_hour, description
+      FROM Clinic_Rooms
+      ORDER BY floor ASC, room_code ASC
+    `);
+
+    // Ca hẹn đang hoạt động trong khung ±30 phút quanh thời điểm hiện tại
+    const [bookings] = await db.query(`
+      SELECT room_id, COUNT(*) as current_bookings
+      FROM Appointments
+      WHERE status IN ('pending', 'confirmed')
+        AND appointment_datetime BETWEEN DATE_SUB(NOW(), INTERVAL 30 MINUTE) AND DATE_ADD(NOW(), INTERVAL 30 MINUTE)
+      GROUP BY room_id
+    `);
+
+    const bookingsByRoom = bookings.reduce((map, row) => {
+      map[row.room_id] = row.current_bookings;
+      return map;
+    }, {});
+
+    const data = rooms.map((room) => {
+      const currentBookings = bookingsByRoom[room.id] || 0;
+      const maxSlot = room.max_slot_per_hour || 1;
+      const occupancyRatio = maxSlot > 0 ? currentBookings / maxSlot : 0;
+
+      let statusIndicator = 'available';
+      let statusLabel = 'Trống chỗ';
+      if (occupancyRatio >= 1.0) {
+        statusIndicator = 'full';
+        statusLabel = 'Kín lịch';
+      } else if (occupancyRatio >= 0.5) {
+        statusIndicator = 'busy';
+        statusLabel = 'Đang tiếp nhận';
+      }
+
+      return {
+        ...room,
+        current_bookings: currentBookings,
+        occupancy_ratio: Number(occupancyRatio.toFixed(2)),
+        status_indicator: statusIndicator,
+        status_label: statusLabel
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    console.error('GET_LIVE_ROOMS_OCCUPANCY_ERROR:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi tải dữ liệu mật độ phòng khám. Vui lòng thử lại sau.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+/**
  * Get services for a specific room
  * GET /api/rooms/:id/services
  */

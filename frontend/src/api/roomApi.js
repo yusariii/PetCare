@@ -8,6 +8,13 @@ export const getRoomsApi = async () => {
 };
 
 /**
+ * BR08: Get live occupancy status for all rooms
+ */
+export const getLiveRoomsOccupancyApi = async () => {
+  return client.get('/rooms/live-occupancy');
+};
+
+/**
  * Get room availability for a specific date
  */
 export const getRoomAvailabilityApi = async (roomId, date) => {

@@ -1,8 +1,29 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Modal, FlatList } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Modal } from 'react-native';
 import { COLORS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
-import { getRoomsApi } from '../../api/roomApi';
+import { getRoomsApi, getLiveRoomsOccupancyApi } from '../../api/roomApi';
+
+const LIVE_REFRESH_INTERVAL_MS = 30000;
+
+const STATUS_META = {
+  available: { color: COLORS.success, label: 'Trống chỗ' },
+  busy: { color: COLORS.warning, label: 'Đang tiếp nhận' },
+  full: { color: COLORS.danger, label: 'Kín lịch' },
+};
+
+// BR08: sinh hướng dẫn lối đi từ sảnh tiếp đón tới phòng dựa trên tầng & tọa độ
+const getWayfindingSteps = (room) => {
+  const steps = ['🚪 Xuất phát từ sảnh tiếp đón chính (tầng trệt).'];
+  if (room.floor > 1) {
+    steps.push(`🔼 Di chuyển lên Tầng ${room.floor} bằng thang bộ hoặc thang máy.`);
+  } else {
+    steps.push('➡️ Đi thẳng theo hành lang chính của tầng trệt.');
+  }
+  const side = (room.coordinate_x ?? 0) % 2 === 0 ? 'bên trái' : 'bên phải';
+  steps.push(`🧭 Rẽ ${side} theo biển chỉ dẫn, phòng ${room.room_code} nằm ở khu vực này.`);
+  return steps;
+};
 
 export default function HospitalMapScreen({ navigation }) {
   const [rooms, setRooms] = useState([]);
@@ -11,26 +32,41 @@ export default function HospitalMapScreen({ navigation }) {
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [showRoomDetail, setShowRoomDetail] = useState(false);
   const [error, setError] = useState('');
+  const pollingRef = useRef(null);
 
   useEffect(() => {
     loadRooms();
+    pollingRef.current = setInterval(() => loadRooms({ silent: true }), LIVE_REFRESH_INTERVAL_MS);
+    return () => clearInterval(pollingRef.current);
   }, []);
 
-  const loadRooms = async () => {
+  const loadRooms = async ({ silent } = {}) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError('');
-      const response = await getRoomsApi();
-      if (response.data.success) {
-        setRooms(response.data.data);
-      } else {
+      const [occupancyRes, roomsRes] = await Promise.all([
+        getLiveRoomsOccupancyApi(),
+        getRoomsApi(),
+      ]);
+
+      if (occupancyRes.data.success) {
+        const servicesById = (roomsRes.data.success ? roomsRes.data.data : []).reduce((map, room) => {
+          map[room.id] = room.services || [];
+          return map;
+        }, {});
+        const merged = occupancyRes.data.data.map((room) => ({
+          ...room,
+          services: servicesById[room.id] || [],
+        }));
+        setRooms(merged);
+      } else if (!silent) {
         setError('Không thể tải danh sách phòng khám');
       }
     } catch (err) {
       console.error('LOAD_ROOMS_ERROR:', err);
-      setError(err.response?.data?.message || 'Lỗi khi tải danh sách phòng khám');
+      if (!silent) setError(err.response?.data?.message || 'Lỗi khi tải danh sách phòng khám');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -55,28 +91,32 @@ export default function HospitalMapScreen({ navigation }) {
     <ResponsiveContainer style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>🏥 Bản Đồ Bệnh Viện</Text>
-        <Text style={styles.subtitle}>Chọn phòng khám chuyên khoa</Text>
+        <Text style={styles.subtitle}>Mật độ phòng khám theo thời gian thực</Text>
       </View>
 
-      {/* Floor Selector */}
-      <View style={styles.floorSelector}>
-        <TouchableOpacity 
-          style={[styles.floorButton, selectedFloor === 1 && styles.floorButtonActive]}
-          onPress={() => setSelectedFloor(1)}
-        >
-          <Text style={[styles.floorButtonText, selectedFloor === 1 && styles.floorButtonTextActive]}>
-            Tầng 1 - Cấp Cứu & Khám Nội
-          </Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.floorButton, selectedFloor === 2 && styles.floorButtonActive]}
-          onPress={() => setSelectedFloor(2)}
-        >
-          <Text style={[styles.floorButtonText, selectedFloor === 2 && styles.floorButtonTextActive]}>
-            Tầng 2 - Da Liễu & Chẩn Đoán
-          </Text>
-        </TouchableOpacity>
+      {/* Segmented Switch: Floor selector */}
+      <View style={styles.segmentedSwitch}>
+        {[1, 2].map((floor) => (
+          <TouchableOpacity
+            key={floor}
+            style={[styles.segment, selectedFloor === floor && styles.segmentActive]}
+            onPress={() => setSelectedFloor(floor)}
+          >
+            <Text style={[styles.segmentText, selectedFloor === floor && styles.segmentTextActive]}>
+              Tầng {floor}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Legend */}
+      <View style={styles.legendRow}>
+        {Object.entries(STATUS_META).map(([key, meta]) => (
+          <View key={key} style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: meta.color }]} />
+            <Text style={styles.legendText}>{meta.label}</Text>
+          </View>
+        ))}
       </View>
 
       {/* Room Grid */}
@@ -88,7 +128,7 @@ export default function HospitalMapScreen({ navigation }) {
       ) : error ? (
         <View style={styles.centerContainer}>
           <Text style={styles.errorText}>❌ {error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadRooms}>
+          <TouchableOpacity style={styles.retryButton} onPress={() => loadRooms()}>
             <Text style={styles.retryButtonText}>Thử lại</Text>
           </TouchableOpacity>
         </View>
@@ -99,26 +139,34 @@ export default function HospitalMapScreen({ navigation }) {
       ) : (
         <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.roomGrid}>
-            {filteredRooms.map((room, index) => (
-              <TouchableOpacity
-                key={room.id}
-                style={styles.roomCard}
-                onPress={() => handleRoomPress(room)}
-              >
-                <View style={styles.roomCodeBadge}>
-                  <Text style={styles.roomCode}>{room.room_code}</Text>
-                </View>
-                <Text style={styles.roomName}>{room.room_name}</Text>
-                <Text style={styles.roomInfo}>
-                  📊 Max: {room.max_slot_per_hour} ca/giờ
-                </Text>
-                {room.services && room.services.length > 0 && (
-                  <Text style={styles.serviceCount}>
-                    ✅ {room.services.length} dịch vụ
+            {filteredRooms.map((room) => {
+              const meta = STATUS_META[room.status_indicator] || STATUS_META.available;
+              return (
+                <TouchableOpacity
+                  key={room.id}
+                  style={[styles.roomCard, { borderLeftColor: meta.color }]}
+                  onPress={() => handleRoomPress(room)}
+                >
+                  <View style={styles.roomCardTopRow}>
+                    <View style={styles.roomCodeBadge}>
+                      <Text style={styles.roomCode}>{room.room_code}</Text>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: meta.color }]}>
+                      <Text style={styles.statusBadgeText}>{room.status_label || meta.label}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.roomName}>{room.room_name}</Text>
+                  <Text style={styles.roomInfo}>
+                    🩺 Đang khám: {room.current_bookings ?? 0}/{room.max_slot_per_hour} ca
                   </Text>
-                )}
-              </TouchableOpacity>
-            ))}
+                  {room.services && room.services.length > 0 && (
+                    <Text style={styles.serviceCount}>
+                      ✅ {room.services.length} dịch vụ
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </ScrollView>
       )}
@@ -162,6 +210,16 @@ export default function HospitalMapScreen({ navigation }) {
                   <Text style={styles.sectionContent}>
                     • Năng lực: {selectedRoom.max_slot_per_hour} ca/giờ
                   </Text>
+                  <Text style={styles.sectionContent}>
+                    • Đang khám: {selectedRoom.current_bookings ?? 0}/{selectedRoom.max_slot_per_hour} ca ({selectedRoom.status_label || STATUS_META[selectedRoom.status_indicator]?.label})
+                  </Text>
+                </View>
+
+                <View style={styles.detailSection}>
+                  <Text style={styles.sectionLabel}>🧭 Chỉ dẫn lối đi:</Text>
+                  {getWayfindingSteps(selectedRoom).map((step, idx) => (
+                    <Text key={idx} style={styles.sectionContent}>{step}</Text>
+                  ))}
                 </View>
 
                 {selectedRoom.services && selectedRoom.services.length > 0 && (
@@ -216,33 +274,54 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 4,
   },
-  floorSelector: {
+  segmentedSwitch: {
     flexDirection: 'row',
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: COLORS.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 4,
   },
-  floorButton: {
+  segment: {
     flex: 1,
     paddingVertical: 10,
-    paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: COLORS.surface,
-    borderWidth: 2,
-    borderColor: COLORS.border,
+    alignItems: 'center',
   },
-  floorButtonActive: {
+  segmentActive: {
     backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
   },
-  floorButtonText: {
-    fontSize: 12,
+  segmentText: {
+    fontSize: 13,
     fontWeight: '600',
     color: COLORS.textSecondary,
-    textAlign: 'center',
   },
-  floorButtonTextActive: {
+  segmentTextActive: {
     color: '#fff',
+  },
+  legendRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  legendText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
   },
   roomGrid: {
     flexDirection: 'row',
@@ -258,7 +337,14 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
+    borderLeftWidth: 5,
     elevation: 2,
+  },
+  roomCardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   roomCodeBadge: {
     alignSelf: 'flex-start',
@@ -266,12 +352,21 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 6,
-    marginBottom: 8,
   },
   roomCode: {
     fontSize: 12,
     fontWeight: 'bold',
     color: COLORS.primary,
+  },
+  statusBadge: {
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#fff',
   },
   roomName: {
     fontSize: 13,

@@ -6,6 +6,7 @@ const roomController = require('../controllers/roomController');
  * Public routes (không cần xác thực)
  */
 router.get('/', roomController.getAllRooms);
+router.get('/live-occupancy', roomController.getLiveRoomsOccupancy);
 router.get('/:id/services', roomController.getRoomServices);
 
 /**
