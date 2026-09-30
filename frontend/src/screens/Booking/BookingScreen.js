@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Modal, FlatList } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { getRoomsApi, getRoomServicesApi, getRoomAvailabilityApi } from '../../api/roomApi';
@@ -25,6 +26,7 @@ export default function BookingScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [bookingError, setBookingError] = useState('');
   const [showRoomPicker, setShowRoomPicker] = useState(false);
   const [showPetPicker, setShowPetPicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -44,6 +46,16 @@ export default function BookingScreen({ route, navigation }) {
       loadAvailability(selectedRoom, selectedDate);
     }
   }, [selectedRoom, selectedDate]);
+
+  // Refresh slot availability whenever the screen regains focus (e.g. coming
+  // back from the appointments list) so counts reflect the latest bookings.
+  useFocusEffect(
+    useCallback(() => {
+      if (selectedRoom && selectedDate) {
+        loadAvailability(selectedRoom, selectedDate);
+      }
+    }, [selectedRoom, selectedDate])
+  );
 
   const loadInitialData = async () => {
     try {
@@ -128,6 +140,7 @@ export default function BookingScreen({ route, navigation }) {
 
     try {
       setSubmitting(true);
+      setBookingError('');
 
       // Format appointment datetime
       const [hours] = selectedTime.split(':');
@@ -143,15 +156,35 @@ export default function BookingScreen({ route, navigation }) {
       });
 
       if (response.data.success) {
+        // Reset the form and refresh availability immediately so the same
+        // slot can't be submitted twice while the success alert is showing.
+        setSelectedServices([]);
+        setSelectedTime(null);
+        setSelectedDate(null);
+        setNotes('');
+        setAvailability([]);
+
         Alert.alert('Thành công', 'Đặt lịch thành công! Bác sĩ sẽ xác nhận lịch của bạn sớm.', [
           {
             text: 'Xem lịch hẹn',
             onPress: () => navigation.navigate('Appointments')
+          },
+          {
+            text: 'Đặt lịch khác',
+            style: 'cancel'
           }
         ]);
       }
     } catch (err) {
-      Alert.alert('Lỗi', err.response?.data?.message || 'Không thể đặt lịch. Vui lòng thử lại.');
+      // Show the reason inline (next to the time picker) instead of only a
+      // dev-console 400 log, since a full slot is an expected, recoverable case.
+      setBookingError(err.response?.data?.message || 'Không thể đặt lịch. Vui lòng thử lại.');
+      setSelectedTime(null);
+      // The slot may have just filled up (or become invalid) - refresh so the
+      // picker reflects the current state instead of letting the user retry blindly.
+      if (selectedRoom && selectedDate) {
+        loadAvailability(selectedRoom, selectedDate);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -285,7 +318,10 @@ export default function BookingScreen({ route, navigation }) {
                       slot.isFull && styles.timeSlotDisabled,
                       selectedTime === slot.time && styles.timeSlotActive
                     ]}
-                    onPress={() => setSelectedTime(slot.time)}
+                    onPress={() => {
+                      setSelectedTime(slot.time);
+                      setBookingError('');
+                    }}
                   >
                     <Text style={[
                       styles.timeSlotText,
@@ -311,6 +347,12 @@ export default function BookingScreen({ route, navigation }) {
             <Text style={{ color: COLORS.textSecondary }}>Nhập ghi chú cho bác sĩ...</Text>
           </TouchableOpacity>
         </View>
+
+        {bookingError ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>⚠️ {bookingError}</Text>
+          </View>
+        ) : null}
 
         {/* Button đặt lịch */}
         <TouchableOpacity
@@ -413,6 +455,7 @@ export default function BookingScreen({ route, navigation }) {
                   onPress={() => {
                     setSelectedDate(item.date);
                     setShowDatePicker(false);
+                    setBookingError('');
                   }}
                 >
                   <Text style={styles.pickerItemText}>{item.label}</Text>

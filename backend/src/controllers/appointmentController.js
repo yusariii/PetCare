@@ -76,20 +76,6 @@ exports.createAppointment = async (req, res) => {
       });
     }
 
-    // Verify room exists and get max_slot_per_hour
-    const [rooms] = await db.query(
-      'SELECT max_slot_per_hour FROM Clinic_Rooms WHERE id = ?',
-      [room_id]
-    );
-    if (rooms.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy phòng khám'
-      });
-    }
-
-    const room = rooms[0];
-
     // Verify service belongs to room
     const servicePlaceholders = serviceIds.map(() => '?').join(',');
     const [services] = await db.query(
@@ -103,26 +89,45 @@ exports.createAppointment = async (req, res) => {
       });
     }
 
-    // BR01: Check current bookings for this room at this time
-    const [booked] = await db.query(`
-      SELECT COUNT(*) as total FROM Appointments
-      WHERE room_id = ?
-        AND appointment_datetime = ?
-        AND status != 'cancelled'
-    `, [room_id, appointment_datetime]);
-
-    if (booked[0].total >= room.max_slot_per_hour) {
-      return res.status(400).json({
-        success: false,
-        message: `Phòng khám này đã đủ ${room.max_slot_per_hour} ca khám trong khung giờ được chọn. Vui lòng chọn thời gian khác.`
-      });
-    }
-
-    // Create one appointment and attach any additional services to it.
+    // BR01: Check current bookings for this room at this time and create the
+    // appointment inside a single transaction. The room row is locked with
+    // FOR UPDATE so concurrent booking requests for the same room are
+    // serialized, preventing a race condition where two requests both read
+    // the slot as available and both insert (double-booking the same slot).
     const connection = await db.getConnection();
     let result;
     try {
       await connection.beginTransaction();
+
+      const [rooms] = await connection.query(
+        'SELECT max_slot_per_hour FROM Clinic_Rooms WHERE id = ? FOR UPDATE',
+        [room_id]
+      );
+      if (rooms.length === 0) {
+        await connection.rollback();
+        return res.status(404).json({
+          success: false,
+          message: 'Không tìm thấy phòng khám'
+        });
+      }
+
+      const room = rooms[0];
+
+      const [booked] = await connection.query(`
+        SELECT COUNT(*) as total FROM Appointments
+        WHERE room_id = ?
+          AND appointment_datetime = ?
+          AND status != 'cancelled'
+      `, [room_id, appointment_datetime]);
+
+      if (booked[0].total >= room.max_slot_per_hour) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `Phòng khám này đã đủ ${room.max_slot_per_hour} ca khám trong khung giờ được chọn. Vui lòng chọn thời gian khác.`
+        });
+      }
+
       [result] = await connection.query(`
         INSERT INTO Appointments
         (user_id, pet_id, room_id, service_id, appointment_datetime, status, notes)
@@ -300,7 +305,7 @@ exports.updateStatus = async (req, res) => {
 
     // Get current appointment
     const [appointments] = await db.query(
-      'SELECT status, doctor_id FROM Appointments WHERE id = ?',
+      'SELECT status, doctor_id, room_id, appointment_datetime FROM Appointments WHERE id = ?',
       [id]
     );
 
@@ -333,10 +338,51 @@ exports.updateStatus = async (req, res) => {
       ? (doctor_id || req.user.id)
       : appointments[0].doctor_id;
 
-    await db.query(
-      'UPDATE Appointments SET status = ?, doctor_id = ? WHERE id = ?',
-      [status, assignedDoctorId, id]
-    );
+    if (status === 'confirmed') {
+      // BR01 safety net: re-check room capacity (locked) before confirming, in
+      // case max_slot_per_hour was lowered after these appointments were made.
+      const connection = await db.getConnection();
+      try {
+        await connection.beginTransaction();
+
+        const [rooms] = await connection.query(
+          'SELECT max_slot_per_hour FROM Clinic_Rooms WHERE id = ? FOR UPDATE',
+          [appointments[0].room_id]
+        );
+        const maxSlot = rooms[0]?.max_slot_per_hour ?? Infinity;
+
+        const [booked] = await connection.query(`
+          SELECT COUNT(*) as total FROM Appointments
+          WHERE room_id = ?
+            AND appointment_datetime = ?
+            AND status != 'cancelled'
+        `, [appointments[0].room_id, appointments[0].appointment_datetime]);
+
+        if (booked[0].total > maxSlot) {
+          await connection.rollback();
+          return res.status(400).json({
+            success: false,
+            message: `Khung giờ này đang có nhiều hơn ${maxSlot} lịch hẹn. Vui lòng hủy bớt lịch trước khi xác nhận.`
+          });
+        }
+
+        await connection.query(
+          'UPDATE Appointments SET status = ?, doctor_id = ? WHERE id = ?',
+          [status, assignedDoctorId, id]
+        );
+        await connection.commit();
+      } catch (transactionError) {
+        await connection.rollback();
+        throw transactionError;
+      } finally {
+        connection.release();
+      }
+    } else {
+      await db.query(
+        'UPDATE Appointments SET status = ?, doctor_id = ? WHERE id = ?',
+        [status, assignedDoctorId, id]
+      );
+    }
 
     return res.status(200).json({
       success: true,
