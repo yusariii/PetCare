@@ -11,6 +11,8 @@ import AIChatScreen from '../screens/AIChat/AIChatScreen';
 import AppointmentsScreen from '../screens/Appointments/AppointmentsScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
 import DoctorDashboardScreen from '../screens/Doctor/DoctorDashboardScreen';
+import DoctorAnalyticsScreen from '../screens/Doctor/DoctorAnalyticsScreen';
+import KnowledgeBaseScreen from '../screens/Doctor/KnowledgeBaseScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -52,13 +54,19 @@ export default function AppNavigator({ onLogout }) {
                     if (route.name === 'Booking') icon = '📅';
                     if (route.name === 'AIChat') icon = '🤖';
                     if (route.name === 'Appointments') icon = '📋';
+                    if (route.name === 'DoctorAnalytics') icon = '📊';
+                    if (route.name === 'KnowledgeBase') icon = '📚';
                     if (route.name === 'Profile') icon = '👤';
                     return <Text style={{ fontSize: focused ? 22 : 18 }}>{icon}</Text>;
                 },
             })}
         >
             {isDoctor ? (
-                <Tab.Screen name="DoctorDashboard" component={DoctorDashboardScreen} options={{ tabBarLabel: 'Ca khám' }} />
+                <>
+                    <Tab.Screen name="DoctorDashboard" component={DoctorDashboardScreen} options={{ tabBarLabel: 'Ca khám' }} />
+                    <Tab.Screen name="DoctorAnalytics" component={DoctorAnalyticsScreen} options={{ tabBarLabel: 'Thống Kê' }} />
+                    <Tab.Screen name="KnowledgeBase" component={KnowledgeBaseScreen} options={{ tabBarLabel: 'Tri thức AI' }} />
+                </>
             ) : (
                 <>
                     <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: 'Trang chủ' }} />
