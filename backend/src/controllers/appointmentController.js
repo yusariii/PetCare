@@ -456,3 +456,61 @@ exports.cancelAppointment = async (req, res) => {
     });
   }
 };
+
+/**
+ * BR09: Hospital analytics dashboard (doctor only)
+ * GET /api/appointments/analytics
+ */
+exports.getHospitalAnalytics = async (req, res) => {
+  try {
+    // Thống kê 1: số ca khám nhóm theo status
+    const [statusSummary] = await db.query(`
+      SELECT status, COUNT(*) as total
+      FROM Appointments
+      GROUP BY status
+    `);
+
+    // Thống kê 2: top 5 dịch vụ được đặt nhiều nhất
+    const [topServices] = await db.query(`
+      SELECT s.id, s.service_name, COUNT(*) as total
+      FROM Appointments a
+      JOIN Services s ON s.id = a.service_id
+      GROUP BY s.id, s.service_name
+      ORDER BY total DESC
+      LIMIT 5
+    `);
+
+    // Thống kê 3: số lượng tư vấn AI theo urgency_level
+    const [urgencySummary] = await db.query(`
+      SELECT urgency_level, COUNT(*) as total
+      FROM AI_Consultations
+      GROUP BY urgency_level
+    `);
+
+    // Thống kê 4: tổng số ca khám của từng phòng khám
+    const [roomLoad] = await db.query(`
+      SELECT cr.id as room_id, cr.room_code, cr.room_name, COUNT(*) as total
+      FROM Appointments a
+      JOIN Clinic_Rooms cr ON cr.id = a.room_id
+      GROUP BY cr.id, cr.room_code, cr.room_name
+      ORDER BY total DESC
+    `);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        status_summary: statusSummary,
+        top_services: topServices,
+        urgency_summary: urgencySummary,
+        room_load: roomLoad
+      }
+    });
+  } catch (error) {
+    console.error('GET_HOSPITAL_ANALYTICS_ERROR:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi tải dữ liệu thống kê. Vui lòng thử lại sau.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};

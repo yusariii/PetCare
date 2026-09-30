@@ -23,6 +23,7 @@ router.delete('/:id', appointmentController.cancelAppointment);
 /**
  * Doctor routes
  */
+router.get('/analytics', requireRole('doctor'), appointmentController.getHospitalAnalytics);
 router.get('/', requireRole('doctor'), appointmentController.getAllAppointments);
 router.patch('/:id/status', requireRole('doctor'), appointmentController.updateStatus);
 

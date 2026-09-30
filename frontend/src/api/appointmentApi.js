@@ -36,6 +36,13 @@ export const updateAppointmentStatusApi = async (appointmentId, data) => {
 };
 
 /**
+ * BR09: Hospital analytics dashboard (doctor only)
+ */
+export const getHospitalAnalyticsApi = async () => {
+  return client.get('/appointments/analytics');
+};
+
+/**
  * Cancel appointment
  */
 export const cancelAppointmentApi = async (appointmentId) => {
