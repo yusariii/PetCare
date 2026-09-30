@@ -56,13 +56,14 @@ exports.askHealthAssistant = async (req, res) => {
 
     // Save consultation to database
     const [result] = await db.query(
-      'INSERT INTO AI_Consultations (pet_id, user_query, ai_advice, urgency_level, recommended_room_id) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO AI_Consultations (pet_id, user_query, ai_advice, urgency_level, recommended_room_id, source_document_ids) VALUES (?, ?, ?, ?, ?, ?)',
       [
         pet_id,
         user_query,
         aiResult.advice,
         aiResult.urgency_level || 'medium',
-        aiResult.recommended_room_id || null
+        aiResult.recommended_room_id || null,
+        JSON.stringify(aiResult.sources || [])
       ]
     );
 
@@ -74,7 +75,8 @@ exports.askHealthAssistant = async (req, res) => {
         urgency_level: aiResult.urgency_level,
         need_doctor: aiResult.need_doctor,
         recommended_room_id: aiResult.recommended_room_id,
-        room_reason: aiResult.room_reason
+        room_reason: aiResult.room_reason,
+        sources: aiResult.sources || []
       }
     });
   } catch (error) {

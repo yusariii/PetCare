@@ -184,6 +184,38 @@ const initDatabase = async () => {
     `);
     console.log('✅ Bảng AI_Consultations được tạo');
 
+    // Migration: thêm cột lưu các tài liệu RAG đã dùng cho mỗi lần tư vấn (bỏ qua nếu đã tồn tại)
+    try {
+      await connection.execute(`
+        ALTER TABLE AI_Consultations ADD COLUMN source_document_ids TEXT NULL AFTER recommended_room_id
+      `);
+      console.log('✅ Đã thêm cột source_document_ids vào AI_Consultations');
+    } catch (alterError) {
+      if (alterError.code !== 'ER_DUP_FIELDNAME') {
+        throw alterError;
+      }
+    }
+
+    // 9. Bảng Medical_Documents - cơ sở tri thức do bác sĩ cung cấp, dùng để RAG khi tư vấn AI
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS Medical_Documents (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        doctor_id INT NOT NULL,
+        title VARCHAR(200) NOT NULL,
+        species ENUM('dog', 'cat', 'other', 'all') NOT NULL DEFAULT 'all',
+        category VARCHAR(100),
+        content TEXT NOT NULL,
+        embedding LONGTEXT,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (doctor_id) REFERENCES Users(id) ON DELETE CASCADE,
+        INDEX idx_species (species),
+        INDEX idx_is_active (is_active)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Bảng Medical_Documents được tạo');
+
     console.log('\n🎉 Database initialization hoàn thành!');
     console.log('📝 Lưu ý: Vui lòng thêm dữ liệu mẫu như Clinic_Rooms và Services');
 

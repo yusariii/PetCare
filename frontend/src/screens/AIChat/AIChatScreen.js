@@ -154,6 +154,24 @@ export default function AIChatScreen({ navigation }) {
                             <Text style={styles.resultText}>{aiResult.advice}</Text>
                         </View>
 
+                        {/* Tài liệu tham khảo dùng để chẩn đoán (RAG) */}
+                        {aiResult.sources && aiResult.sources.length > 0 ? (
+                            <View style={styles.sourceBox}>
+                                <Text style={styles.sourceTitle}>📚 Dựa trên tài liệu bác sĩ cung cấp:</Text>
+                                {aiResult.sources.map((s) => (
+                                    <Text key={s.id} style={styles.sourceItem}>
+                                        • {s.title}{s.category ? ` (${s.category})` : ''}
+                                    </Text>
+                                ))}
+                            </View>
+                        ) : (
+                            <View style={styles.sourceBoxWarning}>
+                                <Text style={styles.sourceWarningText}>
+                                    ⚠️ Chưa có tài liệu tham khảo phù hợp trong cơ sở tri thức. Lời khuyên chỉ mang tính tổng quát, vui lòng đặt lịch khám trực tiếp để được chẩn đoán chính xác.
+                                </Text>
+                            </View>
+                        )}
+
                         {aiResult.need_doctor && (
                             <View style={styles.doctorAlert}>
                                 <Text style={styles.doctorAlertIcon}>⚠️</Text>
@@ -321,6 +339,36 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: COLORS.text,
         lineHeight: 20,
+    },
+    sourceBox: {
+        backgroundColor: COLORS.primaryLight,
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 12,
+    },
+    sourceTitle: {
+        fontSize: 12,
+        fontWeight: 'bold',
+        color: COLORS.primaryDark,
+        marginBottom: 4,
+    },
+    sourceItem: {
+        fontSize: 12,
+        color: COLORS.primaryDark,
+        marginTop: 2,
+    },
+    sourceBoxWarning: {
+        backgroundColor: '#fff3cd',
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 12,
+        borderLeftWidth: 4,
+        borderLeftColor: COLORS.warning,
+    },
+    sourceWarningText: {
+        fontSize: 12,
+        color: COLORS.text,
+        lineHeight: 18,
     },
     doctorAlert: {
         flexDirection: 'row',

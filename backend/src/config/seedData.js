@@ -1,5 +1,6 @@
 const mysql = require('mysql2/promise');
 require('dotenv').config();
+const { indexDocument } = require('../services/ragService');
 
 const seedData = async () => {
   let connection;
@@ -97,6 +98,60 @@ const seedData = async () => {
       console.log('✅ Đã thêm dữ liệu dịch vụ');
     } else {
       console.log('⏭️  Dịch vụ đã tồn tại, bỏ qua');
+    }
+
+    // Kiểm tra tài liệu y khoa cho RAG (cơ sở tri thức của bác sĩ)
+    const [existingDocs] = await connection.execute('SELECT COUNT(*) as count FROM Medical_Documents');
+
+    if (existingDocs[0].count === 0) {
+      const [doctors] = await connection.execute("SELECT id FROM Users WHERE role = 'doctor' LIMIT 1");
+      const doctorId = doctors.length > 0 ? doctors[0].id : null;
+
+      if (doctorId) {
+        const documentsData = [
+          {
+            title: 'Rối loạn tiêu hóa ở chó mèo: nôn mửa và tiêu chảy',
+            species: 'all',
+            category: 'Tiêu hóa',
+            content: 'Nôn mửa và tiêu chảy ở chó mèo thường do ăn phải thức ăn lạ, ký sinh trùng đường ruột, nhiễm virus (Parvo, Care) hoặc ngộ độc thực phẩm. Dấu hiệu cần theo dõi: bỏ ăn trên 24 giờ, nôn liên tục kèm máu, tiêu chảy có máu, mất nước (da mất đàn hồi, mắt trũng). Xử trí tại nhà: ngừng cho ăn 6-12 giờ nhưng vẫn cho uống nước từng ít một, sau đó cho ăn thức ăn dễ tiêu. Nếu triệu chứng kéo dài trên 1 ngày hoặc có dấu hiệu mất nước nặng, cần đưa đến phòng Khám Nội ngay để xét nghiệm và truyền dịch.'
+          },
+          {
+            title: 'Bệnh ngoài da: ngứa, rụng lông, viêm da',
+            species: 'all',
+            category: 'Da liễu',
+            content: 'Ngứa, rụng lông từng mảng, da đỏ hoặc có vảy thường do ve rận, nấm da, dị ứng thức ăn hoặc viêm da tiếp xúc. Nếu thú cưng gãi liên tục, có mùi hôi bất thường trên da hoặc xuất hiện mụn mủ, cần khám chuyên khoa Da liễu để xác định nguyên nhân (soi da, cạo da xét nghiệm) trước khi dùng thuốc, tránh tự ý bôi thuốc của người.'
+          },
+          {
+            title: 'Ho, khó thở và các vấn đề hô hấp',
+            species: 'all',
+            category: 'Hô hấp',
+            content: 'Ho khan, ho có đờm, thở khò khè hoặc thở gấp có thể liên quan đến viêm phế quản, viêm phổi, hoặc bệnh tim ở thú cưng lớn tuổi. Nếu thú cưng thở gấp khi nghỉ ngơi, môi/lưỡi tím tái, hoặc ho kéo dài trên 3 ngày, đây là dấu hiệu cấp cứu cần đưa đến khám Nội tổng quát và siêu âm/X-quang ngực ngay lập tức.'
+          },
+          {
+            title: 'Lịch tiêm phòng và tẩy giun định kỳ cho chó mèo',
+            species: 'all',
+            category: 'Phòng bệnh',
+            content: 'Chó mèo con nên tẩy giun lần đầu lúc 2-3 tuần tuổi, lặp lại mỗi 2-3 tuần đến 3 tháng tuổi, sau đó mỗi 3 tháng một lần. Tiêm phòng mũi cơ bản (Care, Parvo, Lepto) bắt đầu từ 6-8 tuần tuổi, nhắc lại sau 3-4 tuần, tiêm nhắc hàng năm. Đây là thông tin phòng ngừa, không thay thế cho chẩn đoán khi thú cưng đã có triệu chứng bệnh.'
+          },
+        ];
+
+        for (const doc of documentsData) {
+          const [insertResult] = await connection.execute(
+            'INSERT INTO Medical_Documents (doctor_id, title, species, category, content) VALUES (?, ?, ?, ?, ?)',
+            [doctorId, doc.title, doc.species, doc.category, doc.content]
+          );
+          try {
+            await indexDocument(insertResult.insertId);
+          } catch (embedError) {
+            console.warn(`⚠️  Không thể tạo embedding cho tài liệu "${doc.title}": ${embedError.message}`);
+          }
+        }
+        console.log('✅ Đã thêm dữ liệu tài liệu y khoa cho RAG');
+      } else {
+        console.log('⏭️  Chưa có tài khoản bác sĩ, bỏ qua seed tài liệu RAG');
+      }
+    } else {
+      console.log('⏭️  Tài liệu y khoa đã tồn tại, bỏ qua');
     }
 
     console.log('\n🎉 Seed data hoàn thành!');

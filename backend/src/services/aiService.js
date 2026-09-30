@@ -1,9 +1,10 @@
 const ai = require('../config/gemini');
-const db = require('../config/db');
+const { retrieveRelevantDocuments } = require('./ragService');
 
 /**
- * BR05: AI Context-Aware Prompting
- * Fetch all rooms and generate consultation with room recommendations
+ * BR05: RAG-grounded AI consultation.
+ * The AI must base its diagnosis strictly on doctor-provided reference documents
+ * retrieved from the knowledge base (Medical_Documents), instead of inventing medical facts.
  */
 exports.getHealthConsultation = async ({ species, breed, weight_kg, birth_date, historyRecords, userQuery, rooms }) => {
     // Build history text
@@ -16,8 +17,23 @@ exports.getHealthConsultation = async ({ species, breed, weight_kg, birth_date, 
         ? rooms.map(r => `[ID: ${r.id}, Mã: ${r.room_code}, Tên: ${r.room_name}, Tầng: ${r.floor}]`).join('\n')
         : 'Không có phòng khám nào';
 
+    // RAG: retrieve doctor-provided documents relevant to the symptom description
+    const sources = await retrieveRelevantDocuments({ query: userQuery, species, topK: 4 });
+
+    const referenceText = sources.length > 0
+        ? sources.map((s, i) => `[Tài liệu ${i + 1} - ${s.category || 'Chung'}] ${s.title}:\n${s.content}`).join('\n\n')
+        : 'KHÔNG TÌM THẤY tài liệu tham khảo nào phù hợp với triệu chứng này trong cơ sở tri thức.';
+
     const prompt = `
-Bạn là Bác sĩ Trưởng chuyên nghiệp của Bệnh viện Thú y PetCare. Phân tích triệu chứng sau và đưa ra tư vấn chuyên nghiệp.
+Bạn là Bác sĩ Trưởng chuyên nghiệp của Bệnh viện Thú y PetCare.
+
+QUY TẮC BẮT BUỘC:
+- CHỈ được đưa ra chẩn đoán, nguyên nhân và hướng xử trí dựa TRÊN NỘI DUNG của các TÀI LIỆU THAM KHẢO bên dưới do bác sĩ của bệnh viện cung cấp.
+- KHÔNG được tự bịa ra thông tin y khoa không có trong tài liệu tham khảo.
+- Nếu tài liệu tham khảo không đủ để kết luận hoặc không có tài liệu phù hợp, PHẢI nói rõ rằng chưa đủ cơ sở để chẩn đoán và khuyên đặt lịch khám trực tiếp với bác sĩ, thay vì đoán mò.
+
+TÀI LIỆU THAM KHẢO:
+${referenceText}
 
 DANH SÁCH CÁC PHÒNG KHÁM CHUYÊN KHOA CÓ TRONG BỆNH VIỆN:
 ${roomsText}
@@ -34,9 +50,9 @@ ${historyText}
 MÔ TẢ TRIỆU CHỨNG:
 "${userQuery}"
 
-YÊUCẦU: Phân tích và trả về DUY NHẤT một chuỗi JSON thuần (không dùng markdown codeblock hoặc ký tự đặc biệt):
+YÊU CẦU: Phân tích và trả về DUY NHẤT một chuỗi JSON thuần (không dùng markdown codeblock hoặc ký tự đặc biệt):
 {
-  "advice": "Lời khuyên chi tiết, giải thích nguyên nhân tiềm ẩn, mức độ nguy hiểm và hướng dẫn sơ cứu tại nhà nếu có",
+  "advice": "Lời khuyên chi tiết dựa trên tài liệu tham khảo, giải thích nguyên nhân tiềm ẩn, mức độ nguy hiểm và hướng dẫn sơ cứu tại nhà nếu có. Nếu tài liệu không đủ, hãy nói rõ điều đó thay vì đoán mò.",
   "urgency_level": "low|medium|high",
   "need_doctor": true|false,
   "recommended_room_id": <số ID của phòng phù hợp nhất từ danh sách trên>,
@@ -45,13 +61,20 @@ YÊUCẦU: Phân tích và trả về DUY NHẤT một chuỗi JSON thuần (kh�
   `.trim();
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.1-flash-lite',
         contents: prompt,
     });
 
     const rawText = response.text.replace(/```json|```/g, '').trim();
+    const documentSources = sources.map(s => ({
+        id: s.id,
+        title: s.title,
+        category: s.category,
+        similarity: Number(s.score.toFixed(3))
+    }));
+
     try {
-        return JSON.parse(rawText);
+        return { ...JSON.parse(rawText), sources: documentSources };
     } catch (err) {
         console.error('AI_JSON_PARSE_ERROR:', err.message);
         return {
@@ -59,7 +82,8 @@ YÊUCẦU: Phân tích và trả về DUY NHẤT một chuỗi JSON thuần (kh�
             urgency_level: 'medium',
             need_doctor: true,
             recommended_room_id: null,
-            room_reason: 'Vui lòng liên hệ với bác sĩ để được tư vấn chi tiết'
+            room_reason: 'Vui lòng liên hệ với bác sĩ để được tư vấn chi tiết',
+            sources: documentSources
         };
     }
 };
