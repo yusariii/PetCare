@@ -119,7 +119,8 @@ exports.getPetHealthRecords = async (req, res) => {
     const [records] = await db.query(`
       SELECT 
         hr.*,
-        CONCAT(u.full_name, ' (', u.email, ')') as doctor_info
+        CONCAT(u.full_name, ' (', u.email, ')') as doctor_info,
+        (SELECT id FROM Prescriptions WHERE health_record_id = hr.id) as prescription_id
       FROM Health_Records hr
       JOIN Users u ON hr.doctor_id = u.id
       WHERE hr.pet_id = ?

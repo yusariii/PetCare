@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
@@ -14,7 +15,10 @@ import {
 import { COLORS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { getAllAppointmentsApi, updateAppointmentStatusApi } from '../../api/appointmentApi';
-import { createHealthRecordApi } from '../../api/healthRecordApi';
+import { createHealthRecordApi, getPetHealthRecordsApi } from '../../api/healthRecordApi';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { listMedicinesApi } from '../../api/medicineApi';
+import { createPrescriptionApi } from '../../api/prescriptionApi';
 
 const STATUS_LABELS = {
   pending: 'Chờ duyệt',
@@ -32,7 +36,17 @@ const RECORD_TYPES = [
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export default function DoctorDashboardScreen() {
+const STATUS_FILTERS = [
+  ['all', 'Tất cả'],
+  ['pending', 'Chờ duyệt'],
+  ['confirmed', 'Đã xác nhận'],
+  ['completed', 'Hoàn thành'],
+  ['cancelled', 'Đã hủy'],
+];
+
+export default function DoctorDashboardScreen({ route }) {
+  const completedOnly = route?.params?.mode === 'completed';
+  const [statusFilter, setStatusFilter] = useState('all');
   const [appointments, setAppointments] = useState([]);
   const [selectedDate, setSelectedDate] = useState(today());
   const [selectedAppointment, setSelectedAppointment] = useState(null);
@@ -48,11 +62,19 @@ export default function DoctorDashboardScreen() {
     performed_date: today(),
     next_due_date: '',
   });
+  const [medicines, setMedicines] = useState([]);
+  const [prescriptionVisible, setPrescriptionVisible] = useState(false);
+  const [prescriptionContext, setPrescriptionContext] = useState(null); // { health_record_id, pet_name }
+  const [prescriptionItems, setPrescriptionItems] = useState([]);
+  const [medicinePickerVisible, setMedicinePickerVisible] = useState(false);
 
-  const loadAppointments = async (date = selectedDate) => {
+  const loadAppointments = async (date = selectedDate, status = statusFilter) => {
     try {
       setLoading(true);
-      const response = await getAllAppointmentsApi({ date });
+      const params = completedOnly
+        ? { status: 'completed' }
+        : { date, ...(status !== 'all' ? { status } : {}) };
+      const response = await getAllAppointmentsApi(params);
       setAppointments(response.data.success ? response.data.data || [] : []);
     } catch (error) {
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể tải lịch khám');
@@ -61,7 +83,15 @@ export default function DoctorDashboardScreen() {
     }
   };
 
-  useEffect(() => { loadAppointments(); }, []);
+  // Tải lại mỗi khi quay lại tab để thấy ca vừa được hoàn thành ở tab kia
+  useFocusEffect(useCallback(() => {
+    if (completedOnly || /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) loadAppointments();
+  }, [selectedDate, statusFilter, completedOnly]));
+  useEffect(() => {
+    listMedicinesApi().then((response) => {
+      setMedicines(response.data.success ? response.data.data || [] : []);
+    }).catch(() => setMedicines([]));
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -106,12 +136,97 @@ export default function DoctorDashboardScreen() {
     }
     try {
       setSaving(true);
-      await createHealthRecordApi({ ...form, pet_id: selectedAppointment.pet_id });
+      const response = await createHealthRecordApi({ ...form, pet_id: selectedAppointment.pet_id });
+      const recordId = response.data?.data?.record_id;
+      const petName = selectedAppointment.pet_name;
       setRecordVisible(false);
       setSelectedAppointment(null);
-      Alert.alert('Thành công', 'Đã lập hồ sơ bệnh án cho thú cưng.');
+      Alert.alert('Thành công', 'Đã lập hồ sơ bệnh án cho thú cưng.', [
+        { text: 'Để sau' },
+        { text: 'Kê đơn thuốc', onPress: () => openPrescriptionForm(recordId, petName) },
+      ]);
     } catch (error) {
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể lập hồ sơ bệnh án');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openPrescriptionForm = (healthRecordId, petName) => {
+    setPrescriptionContext({ health_record_id: healthRecordId, pet_name: petName });
+    setPrescriptionItems([]);
+    setPrescriptionVisible(true);
+  };
+
+  const prescribeForAppointment = async () => {
+    try {
+      setSaving(true);
+      const user = JSON.parse((await AsyncStorage.getItem('user')) || '{}');
+      const response = await getPetHealthRecordsApi(selectedAppointment.pet_id);
+      const records = response.data.success ? response.data.data || [] : [];
+      const record = records.find((r) => r.doctor_id === user.id && !r.prescription_id);
+      if (!record) {
+        Alert.alert('Chưa có hồ sơ chờ kê đơn', 'Hãy lập hồ sơ bệnh án cho ca khám này trước, sau đó kê đơn thuốc.');
+        return;
+      }
+      const petName = selectedAppointment.pet_name;
+      setSelectedAppointment(null);
+      openPrescriptionForm(record.id, petName);
+    } catch (error) {
+      Alert.alert('Lỗi', error.response?.data?.message || 'Không thể tải hồ sơ bệnh án');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addMedicineToPrescription = (medicine) => {
+    if (prescriptionItems.some((item) => item.medicine_id === medicine.id)) {
+      setMedicinePickerVisible(false);
+      return;
+    }
+    setPrescriptionItems([...prescriptionItems, {
+      medicine_id: medicine.id,
+      name: medicine.name,
+      unit: medicine.unit,
+      dosage: '',
+      quantity: '1',
+    }]);
+    setMedicinePickerVisible(false);
+  };
+
+  const updatePrescriptionItem = (index, field, value) => {
+    setPrescriptionItems(prescriptionItems.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
+  };
+
+  const removePrescriptionItem = (index) => {
+    setPrescriptionItems(prescriptionItems.filter((_, i) => i !== index));
+  };
+
+  const submitPrescription = async () => {
+    if (prescriptionItems.length === 0) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng thêm ít nhất 1 loại thuốc.');
+      return;
+    }
+    for (const item of prescriptionItems) {
+      if (!item.dosage || !item.quantity || Number(item.quantity) <= 0) {
+        Alert.alert('Thiếu thông tin', `Vui lòng nhập liều dùng và số lượng hợp lệ cho thuốc "${item.name}".`);
+        return;
+      }
+    }
+    try {
+      setSaving(true);
+      await createPrescriptionApi({
+        health_record_id: prescriptionContext.health_record_id,
+        items: prescriptionItems.map((item) => ({
+          medicine_id: item.medicine_id,
+          dosage: item.dosage,
+          quantity: Number(item.quantity),
+        })),
+      });
+      setPrescriptionVisible(false);
+      Alert.alert('Thành công', 'Đã kê đơn thuốc. Khách hàng có thể đặt mua và thanh toán tại quầy.');
+    } catch (error) {
+      Alert.alert('Lỗi', error.response?.data?.message || 'Không thể kê đơn thuốc');
     } finally {
       setSaving(false);
     }
@@ -124,34 +239,57 @@ export default function DoctorDashboardScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>BẢNG ĐIỀU KHIỂN</Text>
-          <Text style={styles.title}>Xin chào, bác sĩ</Text>
-          <Text style={styles.subtitle}>Theo dõi ca khám và chăm sóc hồ sơ thú cưng.</Text>
+          <Text style={styles.eyebrow}>{completedOnly ? 'ĐÃ KHÁM' : 'BẢNG ĐIỀU KHIỂN'}</Text>
+          <Text style={styles.title}>{completedOnly ? 'Ca khám đã hoàn thành' : 'Xin chào, bác sĩ'}</Text>
+          <Text style={styles.subtitle}>
+            {completedOnly ? 'Chọn một ca để lập hồ sơ bệnh án và kê đơn thuốc.' : 'Theo dõi ca khám và chăm sóc hồ sơ thú cưng.'}
+          </Text>
         </View>
 
-        <View style={styles.statsRow}>
-          <Stat label="Tổng ca" value={appointments.length} color={COLORS.primary} />
-          <Stat label="Chờ duyệt" value={counts.pending || 0} color={COLORS.warning} />
-          <Stat label="Đã xong" value={counts.completed || 0} color={COLORS.success} />
-        </View>
+        {completedOnly ? (
+          <View style={styles.statsRow}>
+            <Stat label="Tổng ca đã khám" value={appointments.length} color={COLORS.success} />
+          </View>
+        ) : (
+          <>
+            <View style={styles.statsRow}>
+              <Stat label="Tổng ca" value={appointments.length} color={COLORS.primary} />
+              <Stat label="Chờ duyệt" value={counts.pending || 0} color={COLORS.warning} />
+              <Stat label="Đã xong" value={counts.completed || 0} color={COLORS.success} />
+            </View>
 
-        <View style={styles.dateRow}>
-          <Text style={styles.sectionTitle}>Lịch khám trong ngày</Text>
-          <TextInput
-            value={selectedDate}
-            onChangeText={setSelectedDate}
-            onSubmitEditing={() => loadAppointments(selectedDate)}
-            placeholder="YYYY-MM-DD"
-            style={styles.dateInput}
-            maxLength={10}
-          />
-        </View>
-        <TouchableOpacity style={styles.filterButton} onPress={() => loadAppointments(selectedDate)}>
-          <Text style={styles.filterButtonText}>Xem lịch ngày này</Text>
-        </TouchableOpacity>
+            <View style={styles.dateRow}>
+              <Text style={styles.sectionTitle}>Lịch khám trong ngày</Text>
+              <TextInput
+                value={selectedDate}
+                onChangeText={setSelectedDate}
+                onSubmitEditing={() => loadAppointments(selectedDate)}
+                placeholder="YYYY-MM-DD"
+                style={styles.dateInput}
+                maxLength={10}
+              />
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              {STATUS_FILTERS.map(([value, label]) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[styles.chip, statusFilter === value && styles.chipSelected]}
+                  onPress={() => setStatusFilter(value)}
+                >
+                  <Text style={statusFilter === value ? styles.chipTextSelected : styles.chipText}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.filterButton} onPress={() => loadAppointments(selectedDate)}>
+              <Text style={styles.filterButtonText}>Xem lịch ngày này</Text>
+            </TouchableOpacity>
+          </>
+        )}
 
         {loading ? <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} /> : appointments.length === 0 ? (
-          <Text style={styles.empty}>Không có lịch khám trong ngày {selectedDate}.</Text>
+          <Text style={styles.empty}>
+            {completedOnly ? 'Chưa có ca khám nào hoàn thành.' : `Không có lịch khám phù hợp trong ngày ${selectedDate}.`}
+          </Text>
         ) : appointments.map((appointment) => (
           <TouchableOpacity
             key={appointment.id}
@@ -159,12 +297,23 @@ export default function DoctorDashboardScreen() {
             onPress={() => setSelectedAppointment(appointment)}
           >
             <View style={styles.appointmentTop}>
-              <Text style={styles.time}>{new Date(appointment.appointment_datetime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</Text>
+              <Text style={styles.time}>
+                {completedOnly ? `${new Date(appointment.appointment_datetime).toLocaleDateString('vi-VN')} · ` : ''}
+                {new Date(appointment.appointment_datetime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+              </Text>
               <Text style={[styles.status, { color: statusColor(appointment.status) }]}>{STATUS_LABELS[appointment.status]}</Text>
             </View>
             <Text style={styles.pet}>{appointment.pet_name} <Text style={styles.species}>({appointment.species})</Text></Text>
             <Text style={styles.detail}>{appointment.service_name || 'Chưa có dịch vụ'} · {appointment.room_name}</Text>
             <Text style={styles.owner}>Chủ nuôi: {appointment.customer_info}</Text>
+            {appointment.status === 'completed' && (
+              appointment.review_rating ? (
+                <View style={styles.review}>
+                  <Text style={styles.reviewStars}>{'⭐'.repeat(appointment.review_rating)}</Text>
+                  {appointment.review_comment ? <Text style={styles.reviewComment}>"{appointment.review_comment}"</Text> : null}
+                </View>
+              ) : <Text style={styles.noReview}>Chưa có đánh giá</Text>
+            )}
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -181,11 +330,15 @@ export default function DoctorDashboardScreen() {
               <Text style={styles.detail}>Chủ nuôi: {selectedAppointment.customer_info}</Text>
               <Text style={styles.detail}>Dịch vụ: {selectedAppointment.service_name}</Text>
               <Text style={styles.detail}>Ghi chú: {selectedAppointment.notes || 'Không có'}</Text>
+              {selectedAppointment.review_rating ? (
+                <Text style={styles.detail}>Đánh giá: {'⭐'.repeat(selectedAppointment.review_rating)}{selectedAppointment.review_comment ? ` - "${selectedAppointment.review_comment}"` : ''}</Text>
+              ) : null}
               <View style={styles.actions}>
                 {selectedAppointment.status === 'pending' && <Action label="Xác nhận" color={COLORS.primary} onPress={() => updateStatus('confirmed')} />}
                 {selectedAppointment.status === 'confirmed' && <Action label="Hoàn thành" color={COLORS.success} onPress={() => updateStatus('completed')} />}
                 {(selectedAppointment.status === 'pending' || selectedAppointment.status === 'confirmed') && <Action label="Hủy lịch" color={COLORS.danger} onPress={() => updateStatus('cancelled')} />}
                 {selectedAppointment.status === 'completed' && <Action label="Lập hồ sơ bệnh án" color={COLORS.primaryDark} onPress={openRecordForm} />}
+                {selectedAppointment.status === 'completed' && <Action label="Kê đơn thuốc" color={COLORS.primary} onPress={prescribeForAppointment} />}
               </View>
               {saving && <ActivityIndicator color={COLORS.primary} />}
             </>}
@@ -205,6 +358,49 @@ export default function DoctorDashboardScreen() {
             <Field label="Ngày thực hiện (YYYY-MM-DD)" value={form.performed_date} onChangeText={(performed_date) => setForm({ ...form, performed_date })} />
             <Field label="Ngày tái khám (không bắt buộc)" value={form.next_due_date} onChangeText={(next_due_date) => setForm({ ...form, next_due_date })} />
             <TouchableOpacity style={styles.saveButton} onPress={saveRecord} disabled={saving}><Text style={styles.saveText}>{saving ? 'Đang lưu...' : 'Lưu hồ sơ'}</Text></TouchableOpacity>
+          </ScrollView>
+        </View></View>
+      </Modal>
+
+      <Modal visible={prescriptionVisible} transparent animationType="slide" onRequestClose={() => setPrescriptionVisible(false)}>
+        <View style={styles.overlay}><View style={styles.modal}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Kê đơn thuốc{prescriptionContext ? ` - ${prescriptionContext.pet_name}` : ''}</Text>
+            <TouchableOpacity onPress={() => setPrescriptionVisible(false)}><Text style={styles.close}>X</Text></TouchableOpacity>
+          </View>
+          <ScrollView>
+            {prescriptionItems.length === 0 ? (
+              <Text style={styles.empty}>Chưa có thuốc nào trong đơn.</Text>
+            ) : prescriptionItems.map((item, index) => (
+              <View key={item.medicine_id} style={styles.itemRow}>
+                <View style={styles.itemHeader}>
+                  <Text style={styles.itemName}>{item.name} <Text style={styles.species}>({item.unit})</Text></Text>
+                  <TouchableOpacity onPress={() => removePrescriptionItem(index)}><Text style={styles.removeText}>Xóa</Text></TouchableOpacity>
+                </View>
+                <Field label="Liều dùng" value={item.dosage} onChangeText={(value) => updatePrescriptionItem(index, 'dosage', value)} />
+                <Field label="Số lượng" value={String(item.quantity)} onChangeText={(value) => updatePrescriptionItem(index, 'quantity', value.replace(/[^0-9]/g, ''))} keyboardType="numeric" />
+              </View>
+            ))}
+            <TouchableOpacity style={styles.filterButton} onPress={() => setMedicinePickerVisible(true)}>
+              <Text style={styles.filterButtonText}>+ Thêm thuốc</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.saveButton} onPress={submitPrescription} disabled={saving}>
+              <Text style={styles.saveText}>{saving ? 'Đang lưu...' : 'Lưu đơn thuốc'}</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View></View>
+      </Modal>
+
+      <Modal visible={medicinePickerVisible} transparent animationType="fade" onRequestClose={() => setMedicinePickerVisible(false)}>
+        <View style={styles.overlay}><View style={styles.modal}>
+          <View style={styles.modalHeader}><Text style={styles.modalTitle}>Chọn thuốc</Text><TouchableOpacity onPress={() => setMedicinePickerVisible(false)}><Text style={styles.close}>X</Text></TouchableOpacity></View>
+          <ScrollView>
+            {medicines.map((medicine) => (
+              <TouchableOpacity key={medicine.id} style={styles.pickerItem} onPress={() => addMedicineToPrescription(medicine)}>
+                <Text style={styles.pickerItemName}>{medicine.name}</Text>
+                <Text style={styles.detail}>{Number(medicine.price).toLocaleString('vi-VN')}đ / {medicine.unit} · Tồn kho: {medicine.stock_quantity}</Text>
+              </TouchableOpacity>
+            ))}
           </ScrollView>
         </View></View>
       </Modal>
@@ -237,4 +433,8 @@ const styles = StyleSheet.create({
   pet: { color: COLORS.text, fontWeight: '800', fontSize: 18, marginTop: 10 }, species: { color: COLORS.textSecondary, fontWeight: '400', fontSize: 14 }, detail: { color: COLORS.textSecondary, marginTop: 5 }, owner: { color: COLORS.textSecondary, fontSize: 12, marginTop: 10 },
   overlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.45)', justifyContent: 'flex-end' }, modal: { backgroundColor: COLORS.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, maxHeight: '90%' }, modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }, modalTitle: { color: COLORS.text, fontSize: 21, fontWeight: '800' }, close: { color: COLORS.textSecondary, fontWeight: '800', padding: 8 }, actions: { gap: 10, marginTop: 20 }, action: { borderRadius: 10, padding: 13, alignItems: 'center' }, actionText: { color: '#fff', fontWeight: '800' },
   fieldLabel: { color: COLORS.text, fontWeight: '700', marginTop: 12, marginBottom: 6 }, input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 9, padding: 11, color: COLORS.text, backgroundColor: COLORS.background }, multiline: { minHeight: 72, textAlignVertical: 'top' }, typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, typeButton: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 8 }, typeButtonSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary }, typeText: { color: COLORS.textSecondary, fontSize: 12 }, typeTextSelected: { color: '#fff', fontSize: 12, fontWeight: '700' }, saveButton: { backgroundColor: COLORS.primary, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 20, marginBottom: 12 }, saveText: { color: '#fff', fontWeight: '800' },
+  itemRow: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, padding: 12, marginBottom: 10 }, itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, itemName: { color: COLORS.text, fontWeight: '700', fontSize: 15 }, removeText: { color: COLORS.danger, fontWeight: '700' },
+  pickerItem: { borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 12 }, pickerItemName: { color: COLORS.text, fontWeight: '700', fontSize: 15 },
+  chipRow: { gap: 8, paddingHorizontal: 16, paddingTop: 10 }, chip: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 18, paddingVertical: 7, paddingHorizontal: 14, backgroundColor: COLORS.surface }, chipSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary }, chipText: { color: COLORS.textSecondary, fontWeight: '600', fontSize: 13 }, chipTextSelected: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  review: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.border }, reviewStars: { fontSize: 14 }, reviewComment: { color: COLORS.textSecondary, fontStyle: 'italic', marginTop: 4 }, noReview: { color: COLORS.textSecondary, fontSize: 12, marginTop: 10 },
 });
