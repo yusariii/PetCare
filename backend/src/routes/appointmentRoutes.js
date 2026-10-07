@@ -21,10 +21,12 @@ router.post('/', requireRole('customer'), appointmentController.createAppointmen
 router.delete('/:id', appointmentController.cancelAppointment);
 
 /**
- * Doctor routes
+ * Doctor & Admin routes
+ * Doctor: chỉ thấy/ cập nhật được lịch của phòng khám mình phụ trách (lọc ở controller)
+ * Admin: xem toàn viện
  */
-router.get('/analytics', requireRole('doctor'), appointmentController.getHospitalAnalytics);
-router.get('/', requireRole('doctor'), appointmentController.getAllAppointments);
-router.patch('/:id/status', requireRole('doctor'), appointmentController.updateStatus);
+router.get('/analytics', requireRole('admin'), appointmentController.getHospitalAnalytics);
+router.get('/', requireRole('doctor', 'admin'), appointmentController.getAllAppointments);
+router.patch('/:id/status', requireRole('doctor', 'admin'), appointmentController.updateStatus);
 
 module.exports = router;

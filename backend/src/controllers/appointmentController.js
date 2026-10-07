@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const { getOwnRoomId } = require('../utils/doctorScope');
 
 /**
  * Get all services
@@ -215,13 +216,28 @@ exports.getMyAppointments = async (req, res) => {
 };
 
 /**
- * Get all appointments (doctor view)
+ * Get all appointments (doctor: chỉ phòng mình phụ trách; admin: toàn viện)
  * GET /api/appointments
  * Can filter by room_id and date
  */
 exports.getAllAppointments = async (req, res) => {
   try {
-    const { room_id, date } = req.query;
+    const { date, status } = req.query;
+    let { room_id } = req.query;
+
+    if (status && !['pending', 'confirmed', 'completed', 'cancelled'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Trạng thái lọc không hợp lệ' });
+    }
+
+    if (req.user.role === 'doctor') {
+      const ownRoomId = await getOwnRoomId(req.user.id);
+      if (!ownRoomId) {
+        return res.status(200).json({ success: true, data: [] });
+      }
+      // Bác sĩ chỉ được xem lịch của phòng mình, bỏ qua room_id do client gửi lên
+      room_id = ownRoomId;
+    }
+
     let query = `
       SELECT
         a.id,
@@ -246,11 +262,14 @@ exports.getAllAppointments = async (req, res) => {
          WHERE id = a.service_id OR id IN (
            SELECT service_id FROM Appointment_Services WHERE appointment_id = a.id
          )) as price,
-        CONCAT(u.full_name, ' (', u.phone, ')') as customer_info
+        CONCAT(u.full_name, ' (', u.phone, ')') as customer_info,
+        ar.rating as review_rating,
+        ar.comment as review_comment
       FROM Appointments a
       JOIN Pets p ON a.pet_id = p.id
       JOIN Clinic_Rooms cr ON a.room_id = cr.id
       JOIN Users u ON a.user_id = u.id
+      LEFT JOIN Appointment_Reviews ar ON ar.appointment_id = a.id
       WHERE 1=1
     `;
 
@@ -264,6 +283,11 @@ exports.getAllAppointments = async (req, res) => {
     if (date) {
       query += ' AND DATE(a.appointment_datetime) = ?';
       params.push(date);
+    }
+
+    if (status) {
+      query += ' AND a.status = ?';
+      params.push(status);
     }
 
     query += ' ORDER BY a.appointment_datetime DESC';
@@ -314,6 +338,17 @@ exports.updateStatus = async (req, res) => {
         success: false,
         message: 'Không tìm thấy lịch hẹn'
       });
+    }
+
+    // Bác sĩ chỉ được cập nhật lịch hẹn thuộc phòng khám mình phụ trách
+    if (req.user.role === 'doctor') {
+      const ownRoomId = await getOwnRoomId(req.user.id);
+      if (!ownRoomId || appointments[0].room_id !== ownRoomId) {
+        return res.status(403).json({
+          success: false,
+          message: 'Bạn không có quyền cập nhật lịch hẹn của phòng khám khác'
+        });
+      }
     }
 
     const currentStatus = appointments[0].status;
@@ -458,7 +493,7 @@ exports.cancelAppointment = async (req, res) => {
 };
 
 /**
- * BR09: Hospital analytics dashboard (doctor only)
+ * BR09: Thống kê toàn viện (admin only)
  * GET /api/appointments/analytics
  */
 exports.getHospitalAnalytics = async (req, res) => {

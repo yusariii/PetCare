@@ -12,8 +12,20 @@ router.get('/:id/services', roomController.getRoomServices);
 /**
  * Protected routes (cần xác thực)
  */
-const { verifyToken } = require('../middlewares/authMiddleware');
+const { verifyToken, requireRole } = require('../middlewares/authMiddleware');
 
 router.get('/:id/availability', verifyToken, roomController.getRoomAvailability);
+
+/**
+ * Doctor route - phòng khám do chính bác sĩ phụ trách
+ */
+router.get('/my-room', verifyToken, requireRole('doctor'), roomController.getMyRoom);
+
+/**
+ * Admin routes - quản lý phòng khám và phân công bác sĩ
+ */
+router.post('/', verifyToken, requireRole('admin'), roomController.createRoom);
+router.put('/:id', verifyToken, requireRole('admin'), roomController.updateRoom);
+router.patch('/:id/assign-doctor', verifyToken, requireRole('admin'), roomController.assignDoctor);
 
 module.exports = router;

@@ -73,11 +73,28 @@ const initDatabase = async () => {
         coordinate_y INT NOT NULL DEFAULT 0,
         max_slot_per_hour INT NOT NULL DEFAULT 2,
         description TEXT,
+        doctor_id INT NULL UNIQUE,
+        FOREIGN KEY (doctor_id) REFERENCES Users(id) ON DELETE SET NULL,
         INDEX idx_floor (floor),
         INDEX idx_room_code (room_code)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ Bảng Clinic_Rooms được tạo');
+
+    // Migration: mỗi bác sĩ phụ trách tối đa 1 phòng khám (bỏ qua nếu đã tồn tại)
+    try {
+      await connection.execute(`
+        ALTER TABLE Clinic_Rooms ADD COLUMN doctor_id INT NULL UNIQUE AFTER description
+      `);
+      await connection.execute(`
+        ALTER TABLE Clinic_Rooms ADD FOREIGN KEY (doctor_id) REFERENCES Users(id) ON DELETE SET NULL
+      `);
+      console.log('✅ Đã thêm cột doctor_id vào Clinic_Rooms');
+    } catch (alterError) {
+      if (alterError.code !== 'ER_DUP_FIELDNAME') {
+        throw alterError;
+      }
+    }
 
     // 3. Bảng Pets
     await connection.execute(`
