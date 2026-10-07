@@ -264,11 +264,13 @@ exports.getAllAppointments = async (req, res) => {
          )) as price,
         CONCAT(u.full_name, ' (', u.phone, ')') as customer_info,
         ar.rating as review_rating,
-        ar.comment as review_comment
+        ar.comment as review_comment,
+        rd.full_name as room_doctor_name
       FROM Appointments a
       JOIN Pets p ON a.pet_id = p.id
       JOIN Clinic_Rooms cr ON a.room_id = cr.id
       JOIN Users u ON a.user_id = u.id
+      LEFT JOIN Users rd ON rd.id = cr.doctor_id
       LEFT JOIN Appointment_Reviews ar ON ar.appointment_id = a.id
       WHERE 1=1
     `;

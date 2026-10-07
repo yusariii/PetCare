@@ -5,12 +5,26 @@ import { COLORS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { getMyAppointmentsApi, cancelAppointmentApi, getAllAppointmentsApi, updateAppointmentStatusApi } from '../../api/appointmentApi';
 import { createReviewApi } from '../../api/reviewApi';
+import { getRoomsApi } from '../../api/roomApi';
+
+const STATUS_FILTERS = [
+  ['all', 'Tất cả'],
+  ['pending', 'Chờ duyệt'],
+  ['confirmed', 'Đã xác nhận'],
+  ['completed', 'Hoàn thành'],
+  ['cancelled', 'Đã hủy'],
+];
 
 export default function AppointmentsScreen() {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [userRole, setUserRole] = useState('customer');
+  const [roleReady, setRoleReady] = useState(false);
+  const [rooms, setRooms] = useState([]);
+  const [roomFilter, setRoomFilter] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('');
   const [error, setError] = useState('');
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
@@ -19,22 +33,27 @@ export default function AppointmentsScreen() {
   const [reviewComment, setReviewComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
 
+  const isAdmin = userRole === 'admin';
+
+  // Phải biết role trước khi tải, nếu không admin sẽ bị gọi nhầm sang lịch của chính mình
   useEffect(() => {
-    loadUserRole();
-    loadAppointments();
+    AsyncStorage.getItem('user')
+      .then((user) => { if (user) setUserRole(JSON.parse(user).role || 'customer'); })
+      .catch((err) => console.error('Error loading user role:', err))
+      .finally(() => setRoleReady(true));
   }, []);
 
-  const loadUserRole = async () => {
-    try {
-      const user = await AsyncStorage.getItem('user');
-      if (user) {
-        const parsed = JSON.parse(user);
-        setUserRole(parsed.role || 'customer');
-      }
-    } catch (err) {
-      console.error('Error loading user role:', err);
+  useEffect(() => {
+    if (isAdmin) {
+      getRoomsApi().then((res) => setRooms(res.data.success ? res.data.data || [] : [])).catch(() => setRooms([]));
     }
-  };
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!roleReady) return;
+    if (dateFilter && !/^\d{4}-\d{2}-\d{2}$/.test(dateFilter)) return;
+    loadAppointments();
+  }, [roleReady, userRole, roomFilter, statusFilter, dateFilter]);
 
   const loadAppointments = async () => {
     try {
@@ -45,7 +64,13 @@ export default function AppointmentsScreen() {
       if (userRole === 'customer') {
         response = await getMyAppointmentsApi();
       } else {
-        response = await getAllAppointmentsApi();
+        const params = {};
+        if (isAdmin) {
+          if (roomFilter) params.room_id = roomFilter;
+          if (statusFilter !== 'all') params.status = statusFilter;
+          if (dateFilter) params.date = dateFilter;
+        }
+        response = await getAllAppointmentsApi(params);
       }
 
       if (response.data.success) {
@@ -157,9 +182,46 @@ export default function AppointmentsScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>📅 Lịch Hẹn</Text>
         <Text style={styles.subtitle}>
-          {userRole === 'doctor' ? 'Quản lý ca khám' : 'Các lịch hẹn của bạn'}
+          {isAdmin ? 'Toàn bộ lịch hẹn của viện (chỉ xem)' : userRole === 'doctor' ? 'Quản lý ca khám' : 'Các lịch hẹn của bạn'}
         </Text>
       </View>
+
+      {isAdmin && (
+        <View style={styles.filterBar}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            <TouchableOpacity style={[styles.chip, !roomFilter && styles.chipSelected]} onPress={() => setRoomFilter(null)}>
+              <Text style={!roomFilter ? styles.chipTextSelected : styles.chipText}>Mọi phòng</Text>
+            </TouchableOpacity>
+            {rooms.map((room) => (
+              <TouchableOpacity
+                key={room.id}
+                style={[styles.chip, roomFilter === room.id && styles.chipSelected]}
+                onPress={() => setRoomFilter(room.id)}
+              >
+                <Text style={roomFilter === room.id ? styles.chipTextSelected : styles.chipText}>{room.room_code}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {STATUS_FILTERS.map(([value, label]) => (
+              <TouchableOpacity
+                key={value}
+                style={[styles.chip, statusFilter === value && styles.chipSelected]}
+                onPress={() => setStatusFilter(value)}
+              >
+                <Text style={statusFilter === value ? styles.chipTextSelected : styles.chipText}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <TextInput
+            style={styles.dateFilterInput}
+            value={dateFilter}
+            onChangeText={setDateFilter}
+            placeholder="Lọc theo ngày (YYYY-MM-DD), để trống = tất cả"
+            maxLength={10}
+          />
+        </View>
+      )}
 
       {loading ? (
         <View style={styles.centerContainer}>
@@ -209,6 +271,12 @@ export default function AppointmentsScreen() {
                   </Text>
                   {apt.price && (
                     <Text style={styles.priceInfo}>💰 {apt.price.toLocaleString('vi-VN')}đ</Text>
+                  )}
+                  {isAdmin && (
+                    <>
+                      <Text style={styles.serviceInfo}>👤 {apt.customer_info}</Text>
+                      <Text style={styles.serviceInfo}>👨‍⚕️ {apt.room_doctor_name || 'Chưa phân công bác sĩ'}</Text>
+                    </>
                   )}
                 </View>
 
@@ -280,6 +348,27 @@ export default function AppointmentsScreen() {
                       {selectedAppointment.price.toLocaleString('vi-VN')}đ
                     </Text>
                   </View>
+                )}
+
+                {isAdmin && (
+                  <>
+                    <View style={styles.detailSection}>
+                      <Text style={styles.sectionLabel}>👤 Chủ nuôi:</Text>
+                      <Text style={styles.sectionValue}>{selectedAppointment.customer_info}</Text>
+                    </View>
+                    <View style={styles.detailSection}>
+                      <Text style={styles.sectionLabel}>👨‍⚕️ Bác sĩ phụ trách phòng:</Text>
+                      <Text style={styles.sectionValue}>{selectedAppointment.room_doctor_name || 'Chưa phân công'}</Text>
+                    </View>
+                    {selectedAppointment.review_rating ? (
+                      <View style={styles.detailSection}>
+                        <Text style={styles.sectionLabel}>⭐ Đánh giá:</Text>
+                        <Text style={styles.sectionValue}>
+                          {'⭐'.repeat(selectedAppointment.review_rating)}{selectedAppointment.review_comment ? ` - "${selectedAppointment.review_comment}"` : ''}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </>
                 )}
 
                 {selectedAppointment.doctor_info && (
@@ -576,6 +665,45 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,
+  },
+  filterBar: {
+    paddingBottom: 8,
+  },
+  chipRow: {
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 18,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    backgroundColor: COLORS.surface,
+  },
+  chipSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  chipText: {
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  chipTextSelected: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  dateFilterInput: {
+    marginHorizontal: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    padding: 10,
+    backgroundColor: COLORS.surface,
+    color: COLORS.text,
   },
   starRow: {
     flexDirection: 'row',
