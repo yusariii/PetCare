@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, RefreshControl, Modal, TextInput } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { getMyAppointmentsApi, cancelAppointmentApi, getAllAppointmentsApi, updateAppointmentStatusApi } from '../../api/appointmentApi';
+import { createReviewApi } from '../../api/reviewApi';
 
 export default function AppointmentsScreen() {
   const [appointments, setAppointments] = useState([]);
@@ -14,6 +15,9 @@ export default function AppointmentsScreen() {
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   useEffect(() => {
     loadUserRole();
@@ -127,6 +131,25 @@ export default function AppointmentsScreen() {
       cancelled: 'Đã hủy'
     };
     return labels[status] || status;
+  };
+
+  const submitReview = async () => {
+    try {
+      setSubmittingReview(true);
+      await createReviewApi({
+        appointment_id: selectedAppointment.id,
+        rating: reviewRating,
+        comment: reviewComment || undefined,
+      });
+      Alert.alert('Cảm ơn bạn!', 'Đánh giá của bạn đã được ghi nhận.');
+      setReviewComment('');
+      setReviewRating(5);
+      setShowDetail(false);
+    } catch (err) {
+      Alert.alert('Lỗi', err.response?.data?.message || 'Không thể gửi đánh giá');
+    } finally {
+      setSubmittingReview(false);
+    }
   };
 
   return (
@@ -316,6 +339,33 @@ export default function AppointmentsScreen() {
                         )}
                       </TouchableOpacity>
                     )}
+                  </View>
+                )}
+
+                {userRole === 'customer' && selectedAppointment.status === 'completed' && (
+                  <View style={styles.actionSection}>
+                    <Text style={styles.sectionLabel}>⭐ Đánh giá lịch khám này:</Text>
+                    <View style={styles.starRow}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <TouchableOpacity key={star} onPress={() => setReviewRating(star)}>
+                          <Text style={styles.starIcon}>{star <= reviewRating ? '⭐' : '☆'}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <TextInput
+                      style={styles.reviewInput}
+                      placeholder="Nhận xét của bạn (không bắt buộc)"
+                      value={reviewComment}
+                      onChangeText={setReviewComment}
+                      multiline
+                    />
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.confirmButton]}
+                      onPress={submitReview}
+                      disabled={submittingReview}
+                    >
+                      {submittingReview ? <ActivityIndicator color="#fff" /> : <Text style={styles.actionButtonText}>Gửi đánh giá</Text>}
+                    </TouchableOpacity>
                   </View>
                 )}
               </ScrollView>
@@ -526,5 +576,23 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,
+  },
+  starRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginVertical: 8,
+  },
+  starIcon: {
+    fontSize: 28,
+  },
+  reviewInput: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    padding: 10,
+    minHeight: 60,
+    textAlignVertical: 'top',
+    color: COLORS.text,
+    marginBottom: 12,
   },
 });
