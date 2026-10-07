@@ -253,6 +253,109 @@ const initDatabase = async () => {
     `);
     console.log('✅ Bảng Medical_Documents được tạo');
 
+    // 10. Bảng Appointment_Reviews - khách hàng đánh giá lịch khám đã hoàn thành
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS Appointment_Reviews (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        appointment_id INT NOT NULL UNIQUE,
+        rating TINYINT NOT NULL,
+        comment TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (appointment_id) REFERENCES Appointments(id) ON DELETE CASCADE,
+        CONSTRAINT chk_rating_range CHECK (rating BETWEEN 1 AND 5)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Bảng Appointment_Reviews được tạo');
+
+    // 11. Bảng Medicines - danh mục thuốc và tồn kho
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS Medicines (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(150) NOT NULL,
+        unit VARCHAR(30) NOT NULL DEFAULT 'viên',
+        price DECIMAL(10,2) NOT NULL,
+        stock_quantity INT NOT NULL DEFAULT 0,
+        description TEXT,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_is_active (is_active)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Bảng Medicines được tạo');
+
+    // 12. Bảng Prescriptions - đơn thuốc gắn với 1 bệnh án
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS Prescriptions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        health_record_id INT NOT NULL UNIQUE,
+        doctor_id INT NOT NULL,
+        pet_id INT NOT NULL,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (health_record_id) REFERENCES Health_Records(id) ON DELETE CASCADE,
+        FOREIGN KEY (doctor_id) REFERENCES Users(id) ON DELETE RESTRICT,
+        FOREIGN KEY (pet_id) REFERENCES Pets(id) ON DELETE CASCADE,
+        INDEX idx_pet_id (pet_id),
+        INDEX idx_doctor_id (doctor_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Bảng Prescriptions được tạo');
+
+    // 13. Bảng Prescription_Items - chi tiết từng loại thuốc trong đơn
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS Prescription_Items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        prescription_id INT NOT NULL,
+        medicine_id INT NOT NULL,
+        dosage VARCHAR(200) NOT NULL,
+        quantity INT NOT NULL,
+        unit_price DECIMAL(10,2) NOT NULL,
+        FOREIGN KEY (prescription_id) REFERENCES Prescriptions(id) ON DELETE CASCADE,
+        FOREIGN KEY (medicine_id) REFERENCES Medicines(id) ON DELETE RESTRICT,
+        INDEX idx_prescription_id (prescription_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Bảng Prescription_Items được tạo');
+
+    // 14. Bảng Medicine_Orders - khách đặt giữ chỗ thuốc theo đơn, thanh toán tại quầy
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS Medicine_Orders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        prescription_id INT NOT NULL,
+        user_id INT NOT NULL,
+        total_amount DECIMAL(10,2) NOT NULL,
+        status ENUM('pending', 'paid', 'cancelled') NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (prescription_id) REFERENCES Prescriptions(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE,
+        INDEX idx_user_id (user_id),
+        INDEX idx_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Bảng Medicine_Orders được tạo');
+
+    // 15. Bảng Stock_Movements - nhật ký biến động tồn kho thuốc để truy vết
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS Stock_Movements (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        medicine_id INT NOT NULL,
+        change_qty INT NOT NULL,
+        quantity_after INT NOT NULL,
+        movement_type ENUM('initial', 'import', 'adjust', 'reserve', 'release') NOT NULL,
+        note VARCHAR(255) NULL,
+        order_id INT NULL,
+        created_by INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (medicine_id) REFERENCES Medicines(id) ON DELETE CASCADE,
+        FOREIGN KEY (order_id) REFERENCES Medicine_Orders(id) ON DELETE SET NULL,
+        FOREIGN KEY (created_by) REFERENCES Users(id) ON DELETE SET NULL,
+        INDEX idx_medicine_created (medicine_id, created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Bảng Stock_Movements được tạo');
+
     console.log('\n🎉 Database initialization hoàn thành!');
     console.log('📝 Lưu ý: Vui lòng thêm dữ liệu mẫu như Clinic_Rooms và Services');
 
