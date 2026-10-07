@@ -9,6 +9,11 @@ const roomRoutes = require('./routes/roomRoutes');
 const healthRecordRoutes = require('./routes/healthRecordRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const documentRoutes = require('./routes/documentRoutes');
+const medicineRoutes = require('./routes/medicineRoutes');
+const prescriptionRoutes = require('./routes/prescriptionRoutes');
+const medicineOrderRoutes = require('./routes/medicineOrderRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 const { initCronJobs } = require('./services/cronService');
 const initDatabase = require('./config/initDatabase');
 const seedData = require('./config/seedData');
@@ -34,6 +39,11 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/health-records', healthRecordRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/medicines', medicineRoutes);
+app.use('/api/prescriptions', prescriptionRoutes);
+app.use('/api/medicine-orders', medicineOrderRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
