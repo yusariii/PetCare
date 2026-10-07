@@ -1,4 +1,5 @@
 const mysql = require('mysql2/promise');
+const bcrypt = require('bcryptjs');
 require('dotenv').config();
 const { indexDocument } = require('../services/ragService');
 
@@ -152,6 +153,80 @@ const seedData = async () => {
       }
     } else {
       console.log('⏭️  Tài liệu y khoa đã tồn tại, bỏ qua');
+    }
+
+    // Tài khoản admin mặc định để quản lý toàn viện (thống kê, tài khoản bác sĩ, tri thức AI)
+    const [existingAdmins] = await connection.execute("SELECT COUNT(*) as count FROM Users WHERE role = 'admin'");
+    if (existingAdmins[0].count === 0) {
+      const defaultPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'Admin@123';
+      const password_hash = await bcrypt.hash(defaultPassword, 10);
+      await connection.execute(
+        'INSERT INTO Users (full_name, email, password_hash, phone, role) VALUES (?, ?, ?, ?, "admin")',
+        ['Quản trị viên hệ thống', 'admin@petcare.local', password_hash, null]
+      );
+      console.log(`✅ Đã tạo tài khoản admin mặc định (admin@petcare.local / ${defaultPassword}) - vui lòng đổi mật khẩu sau khi đăng nhập`);
+    } else {
+      console.log('⏭️  Tài khoản admin đã tồn tại, bỏ qua');
+    }
+
+    // Tài khoản dược sĩ mẫu phụ trách quầy thuốc và kho
+    const [existingPharmacists] = await connection.execute("SELECT COUNT(*) as count FROM Users WHERE role = 'pharmacist'");
+    if (existingPharmacists[0].count === 0) {
+      const pharmacistPassword = process.env.PHARMACIST_DEFAULT_PASSWORD || 'Pharma@123';
+      const pharmacistHash = await bcrypt.hash(pharmacistPassword, 10);
+      await connection.execute(
+        'INSERT INTO Users (full_name, email, password_hash, phone, role) VALUES (?, ?, ?, ?, "pharmacist")',
+        ['Dược sĩ quầy thuốc', 'pharmacist@petcare.local', pharmacistHash, null]
+      );
+      console.log(`✅ Đã tạo tài khoản dược sĩ mặc định (pharmacist@petcare.local / ${pharmacistPassword}) - vui lòng đổi mật khẩu sau khi đăng nhập`);
+    }
+
+    // Gán mỗi bác sĩ chưa có phòng vào một phòng khám còn trống (1 bác sĩ : 1 phòng)
+    const [unassignedDoctors] = await connection.execute(`
+      SELECT u.id FROM Users u
+      LEFT JOIN Clinic_Rooms cr ON cr.doctor_id = u.id
+      WHERE u.role = 'doctor' AND cr.id IS NULL
+    `);
+    if (unassignedDoctors.length > 0) {
+      const [freeRooms] = await connection.execute(
+        'SELECT id FROM Clinic_Rooms WHERE doctor_id IS NULL ORDER BY id'
+      );
+      const assignCount = Math.min(unassignedDoctors.length, freeRooms.length);
+      for (let i = 0; i < assignCount; i++) {
+        await connection.execute('UPDATE Clinic_Rooms SET doctor_id = ? WHERE id = ?', [
+          unassignedDoctors[i].id,
+          freeRooms[i].id
+        ]);
+      }
+      if (assignCount > 0) {
+        console.log(`✅ Đã gán ${assignCount} bác sĩ vào phòng khám phụ trách`);
+      }
+    }
+
+    // Danh mục thuốc mẫu kèm tồn kho
+    const [existingMedicines] = await connection.execute('SELECT COUNT(*) as count FROM Medicines');
+    if (existingMedicines[0].count === 0) {
+      const medicinesData = [
+        { name: 'Amoxicillin 250mg', unit: 'viên', price: 3000, stock_quantity: 500, description: 'Kháng sinh phổ rộng điều trị nhiễm khuẩn' },
+        { name: 'Men tiêu hóa Probiotic', unit: 'gói', price: 8000, stock_quantity: 300, description: 'Hỗ trợ tiêu hóa, cân bằng hệ vi sinh đường ruột' },
+        { name: 'Thuốc tẩy giun Praziquantel', unit: 'viên', price: 15000, stock_quantity: 200, description: 'Tẩy giun sán cho chó mèo' },
+        { name: 'Vitamin tổng hợp B-Complex', unit: 'chai', price: 45000, stock_quantity: 150, description: 'Bổ sung vitamin nhóm B, tăng sức đề kháng' },
+        { name: 'Thuốc nhỏ mắt Tobramycin', unit: 'chai', price: 35000, stock_quantity: 100, description: 'Điều trị viêm kết mạc, nhiễm trùng mắt' },
+        { name: 'Thuốc bôi ngoài da Betadine', unit: 'chai', price: 25000, stock_quantity: 120, description: 'Sát trùng vết thương ngoài da' }
+      ];
+      for (const med of medicinesData) {
+        const [insertResult] = await connection.execute(
+          'INSERT INTO Medicines (name, unit, price, stock_quantity, description) VALUES (?, ?, ?, ?, ?)',
+          [med.name, med.unit, med.price, med.stock_quantity, med.description]
+        );
+        await connection.execute(
+          "INSERT INTO Stock_Movements (medicine_id, change_qty, quantity_after, movement_type, note) VALUES (?, ?, ?, 'initial', 'Tồn kho ban đầu')",
+          [insertResult.insertId, med.stock_quantity, med.stock_quantity]
+        );
+      }
+      console.log('✅ Đã thêm dữ liệu danh mục thuốc');
+    } else {
+      console.log('⏭️  Danh mục thuốc đã tồn tại, bỏ qua');
     }
 
     console.log('\n🎉 Seed data hoàn thành!');
