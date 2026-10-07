@@ -4,8 +4,8 @@ const documentController = require('../controllers/documentController');
 const { verifyToken, requireRole } = require('../middlewares/authMiddleware');
 
 router.use(verifyToken);
-// Knowledge base documents power the RAG-grounded AI consultation; only doctors curate them.
-router.use(requireRole('doctor'));
+// Knowledge base documents power the RAG-grounded AI consultation; only admin curates them.
+router.use(requireRole('admin'));
 
 router.post('/', documentController.createDocument);
 router.get('/', documentController.listDocuments);
