@@ -34,13 +34,33 @@ const initDatabase = async () => {
         email VARCHAR(100) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
         phone VARCHAR(20),
-        role ENUM('customer', 'doctor') NOT NULL DEFAULT 'customer',
+        role ENUM('customer', 'doctor', 'admin', 'pharmacist') NOT NULL DEFAULT 'customer',
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_email (email),
         INDEX idx_role (role)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     console.log('✅ Bảng Users được tạo');
+
+    // Migration: mở rộng role sang 'admin' và thêm cờ khoá tài khoản (bỏ qua nếu DB đã tạo từ trước)
+    try {
+      await connection.execute(`
+        ALTER TABLE Users MODIFY COLUMN role ENUM('customer', 'doctor', 'admin', 'pharmacist') NOT NULL DEFAULT 'customer'
+      `);
+    } catch (alterError) {
+      console.warn('⚠️  Không thể cập nhật ENUM role của Users:', alterError.message);
+    }
+    try {
+      await connection.execute(`
+        ALTER TABLE Users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE AFTER role
+      `);
+      console.log('✅ Đã thêm cột is_active vào Users');
+    } catch (alterError) {
+      if (alterError.code !== 'ER_DUP_FIELDNAME') {
+        throw alterError;
+      }
+    }
 
     // 2. Bảng Clinic_Rooms
     await connection.execute(`

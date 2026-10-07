@@ -48,6 +48,10 @@ exports.login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Email hoặc mật khẩu không đúng' });
     }
 
+    if (!user.is_active) {
+      return res.status(403).json({ success: false, message: 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.' });
+    }
+
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET,
