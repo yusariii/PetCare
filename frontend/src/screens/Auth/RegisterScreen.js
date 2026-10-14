@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView } from 'react-native';
-import { COLORS } from '../../constants/theme';
+import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { registerApi } from '../../api/authApi';
 
@@ -64,8 +64,11 @@ export default function RegisterScreen({ navigation }) {
     <ResponsiveContainer style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.card}>
-          <Text style={styles.title}>Tạo Tài Khoản 🐾</Text>
-          <Text style={styles.subtitle}>Bắt đầu chăm sóc và theo dõi sức khỏe thú cưng</Text>
+          <View style={styles.brandBadge}>
+            <Text style={styles.brandIcon}>🐾</Text>
+          </View>
+          <Text style={styles.title}>Tạo Tài Khoản Mới</Text>
+          <Text style={styles.subtitle}>Bắt đầu chăm sóc và theo dõi sức khỏe thú cưng cùng PetCare</Text>
 
           {statusMessage ? (
             <View style={[styles.statusBox, statusType === 'success' ? styles.statusSuccess : styles.statusError]}>
@@ -73,53 +76,78 @@ export default function RegisterScreen({ navigation }) {
             </View>
           ) : null}
 
-          <TextInput
-            placeholder="Họ và tên của bạn"
-            value={fullName}
-            onChangeText={setFullName}
-            style={styles.input}
-          />
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Họ và tên của bạn <Text style={styles.required}>*</Text></Text>
+            <TextInput
+              placeholder="Nguyễn Văn A"
+              placeholderTextColor={COLORS.textMuted}
+              value={fullName}
+              onChangeText={setFullName}
+              style={styles.input}
+            />
+          </View>
 
-          <TextInput
-            placeholder="Email"
-            value={email}
-            onChangeText={setEmail}
-            style={styles.input}
-            autoCapitalize="none"
-            keyboardType="email-address"
-          />
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Email <Text style={styles.required}>*</Text></Text>
+            <TextInput
+              placeholder="name@example.com"
+              placeholderTextColor={COLORS.textMuted}
+              value={email}
+              onChangeText={setEmail}
+              style={styles.input}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+          </View>
 
-          <TextInput
-            placeholder="Số điện thoại (tùy chọn)"
-            value={phone}
-            onChangeText={setPhone}
-            style={styles.input}
-            keyboardType="phone-pad"
-          />
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Số điện thoại</Text>
+            <TextInput
+              placeholder="0912 345 678"
+              placeholderTextColor={COLORS.textMuted}
+              value={phone}
+              onChangeText={setPhone}
+              style={styles.input}
+              keyboardType="phone-pad"
+            />
+          </View>
 
-          <TextInput
-            placeholder="Mật khẩu"
-            value={password}
-            onChangeText={setPassword}
-            style={styles.input}
-            secureTextEntry
-          />
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Mật khẩu <Text style={styles.required}>*</Text></Text>
+            <TextInput
+              placeholder="Tối thiểu 6 ký tự"
+              placeholderTextColor={COLORS.textMuted}
+              value={password}
+              onChangeText={setPassword}
+              style={styles.input}
+              secureTextEntry
+            />
+          </View>
 
-          <TextInput
-            placeholder="Xác nhận mật khẩu"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            style={styles.input}
-            secureTextEntry
-          />
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Xác nhận mật khẩu <Text style={styles.required}>*</Text></Text>
+            <TextInput
+              placeholder="Nhập lại mật khẩu"
+              placeholderTextColor={COLORS.textMuted}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              style={styles.input}
+              secureTextEntry
+            />
+          </View>
 
-          <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Đăng Ký</Text>}
+          <TouchableOpacity
+            style={[styles.button, loading && styles.btnDisabled]}
+            onPress={handleRegister}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Đăng Ký Tài Khoản</Text>}
           </TouchableOpacity>
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>Đã có tài khoản? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+            <TouchableOpacity onPress={() => navigation.navigate('Login')} activeOpacity={0.7}>
               <Text style={styles.linkText}>Đăng nhập</Text>
             </TouchableOpacity>
           </View>
@@ -130,57 +158,122 @@ export default function RegisterScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: { justifyContent: 'center', padding: 20 },
-  scrollContent: { flexGrow: 1, justifyContent: 'center' },
+  container: {
+    justifyContent: 'center',
+    padding: 16,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
   card: {
     backgroundColor: COLORS.surface,
-    padding: 24,
-    borderRadius: 20,
-    elevation: 3,
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    marginVertical: 20,
-  },
-  title: { fontSize: 26, fontWeight: 'bold', color: COLORS.primary, textAlign: 'center' },
-  subtitle: { fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', marginBottom: 20, marginTop: 4 },
-  statusBox: {
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 12,
+    padding: 32,
+    borderRadius: 24,
+    width: '100%',
+    maxWidth: 480,
     borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    ...SHADOWS.lg,
   },
-  statusSuccess: {
-    backgroundColor: '#E8F8EE',
-    borderColor: '#2E9E5A',
+  brandBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
   },
-  statusError: {
-    backgroundColor: '#FDECEC',
-    borderColor: '#D94A4A',
+  brandIcon: {
+    fontSize: 32,
   },
-  statusText: {
-    color: '#1E1E1E',
-    fontSize: 13,
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: COLORS.text,
     textAlign: 'center',
   },
+  subtitle: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginBottom: 20,
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  statusBox: {
+    width: '100%',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 14,
+  },
+  statusSuccess: {
+    backgroundColor: '#D1FAE5',
+  },
+  statusError: {
+    backgroundColor: '#FEE2E2',
+  },
+  statusText: {
+    fontSize: 13,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  formGroup: {
+    width: '100%',
+    marginBottom: 14,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 6,
+  },
+  required: {
+    color: COLORS.danger,
+  },
   input: {
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.surfaceSubtle,
     borderWidth: 1,
-    borderColor: COLORS.primaryLight,
+    borderColor: COLORS.border,
     borderRadius: 12,
-    padding: 13,
-    marginBottom: 12,
-    fontSize: 15,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: COLORS.text,
   },
   button: {
+    width: '100%',
     backgroundColor: COLORS.primary,
-    padding: 15,
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 10,
+    ...SHADOWS.sm,
   },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 18 },
-  footerText: { color: COLORS.textSecondary, fontSize: 14 },
-  linkText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 14 },
+  btnDisabled: {
+    opacity: 0.7,
+  },
+  btnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 20,
+  },
+  footerText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  linkText: {
+    color: COLORS.primaryDark,
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
 });

@@ -1,12 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
-import { COLORS } from '../../constants/theme';
+import {
+    View,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    StyleSheet,
+    ScrollView,
+    ActivityIndicator,
+    Alert,
+} from 'react-native';
+import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
+import { useResponsive } from '../../utils/responsive';
 import { getMyPetsApi } from '../../api/petApi';
 import { consultAIApi } from '../../api/aiApi';
 import { getRoomsApi } from '../../api/roomApi';
 
+const QUICK_PROMPTS = [
+    { label: 'Nôn ra bọt vàng & bỏ ăn', text: 'Bé bỏ ăn 2 hôm nay, nôn ra dịch vàng và bọt trắng, người mệt mỏi li bì.' },
+    { label: 'Gãi tai liên tục & có mùi', text: 'Bé gãi tai liên tục, lắc đầu nhiều, trong tai có mủ đen và mùi hôi khó chịu.' },
+    { label: 'Tiêu chảy & mất nước', text: 'Bé bị tiêu chảy phân lỏng nhiều lần trong ngày, mắt trũng, uống ít nước.' },
+    { label: 'Khó thở & ho khò khè', text: 'Bé thở gấp, khò khè khi nằm nghỉ, thỉnh thoảng ho khan như bị hóc xương.' },
+];
+
 export default function AIChatScreen({ navigation }) {
+    const { isTabletOrDesktop } = useResponsive();
     const [pets, setPets] = useState([]);
     const [rooms, setRooms] = useState([]);
     const [selectedPet, setSelectedPet] = useState(null);
@@ -77,9 +95,27 @@ export default function AIChatScreen({ navigation }) {
 
     const getUrgencyBadge = (level) => {
         switch (level) {
-            case 'high': return { text: '🚨 Nguy cấp - Cần đi khám ngay', color: COLORS.danger };
-            case 'medium': return { text: '⚠️ Cần theo dõi sát sao', color: COLORS.warning };
-            default: return { text: '✅ Mức độ an toàn / Nhẹ', color: COLORS.success };
+            case 'high':
+                return {
+                    text: '🚨 NGUY CẤP — Cần đưa bé đi khám ngay lập tức',
+                    bg: '#FEE2E2',
+                    textColor: '#B91C1C',
+                    borderColor: '#EF4444',
+                };
+            case 'medium':
+                return {
+                    text: '⚠️ CẢNH BÁO — Cần theo dõi sát & đặt lịch sớm',
+                    bg: '#FEF3C7',
+                    textColor: '#B45309',
+                    borderColor: '#F59E0B',
+                };
+            default:
+                return {
+                    text: '✅ MỨC ĐỘ NHẸ — Có thể tự chăm sóc & theo dõi tại nhà',
+                    bg: '#D1FAE5',
+                    textColor: '#047857',
+                    borderColor: '#10B981',
+                };
         }
     };
 
@@ -89,139 +125,231 @@ export default function AIChatScreen({ navigation }) {
     };
 
     const recommendedRoom = getRecommendedRoom();
+    const urgencyMeta = aiResult ? getUrgencyBadge(aiResult.urgency_level) : null;
 
     return (
         <ResponsiveContainer style={styles.container}>
             <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Header */}
                 <View style={styles.header}>
-                    <Text style={styles.title}>🩺 Trợ Lý Thú Y AI</Text>
-                    <Text style={styles.subtitle}>Nhận tư vấn tức thì về tình trạng sức khỏe của bé</Text>
+                    <View>
+                        <Text style={styles.title}>Bác Sĩ Thú Y AI 🩺</Text>
+                        <Text style={styles.subtitle}>
+                            Tư vấn sơ bộ triệu chứng có kiểm chứng (RAG) dựa trên tài liệu y khoa từ các bác sĩ chuyên khoa
+                        </Text>
+                    </View>
                 </View>
 
-                {/* Chọn Pet */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>🐾 Chọn thú cưng:</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.petPicker}>
-                        {pets.map((p) => (
-                            <TouchableOpacity
-                                key={p.id}
-                                style={[styles.petChip, selectedPet?.id === p.id && styles.petChipActive]}
-                                onPress={() => setSelectedPet(p)}
-                            >
-                                <Text style={[styles.chipText, selectedPet?.id === p.id && styles.chipTextActive]}>
-                                    {p.species === 'dog' ? '🐶' : p.species === 'cat' ? '🐱' : '🐾'} {p.name}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
-                </View>
+                {/* Main 2-Column Split Layout on Desktop */}
+                <View style={[styles.mainLayout, isTabletOrDesktop && styles.mainLayoutDesktop]}>
+                    
+                    {/* CỘT TRÁI: CHỌN BÉ, THÔNG TIN BÉ, GỢI Ý CÂU HỎI */}
+                    <View style={[styles.leftColumn, isTabletOrDesktop && styles.leftColumnDesktop]}>
+                        {/* Thẻ Chọn Bé */}
+                        <View style={styles.cardSection}>
+                            <Text style={styles.cardSectionTitle}>🐾 Chọn bé cưng cần tư vấn</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.petPicker}>
+                                {pets.map((p) => {
+                                    const isSelected = selectedPet?.id === p.id;
+                                    return (
+                                        <TouchableOpacity
+                                            key={p.id}
+                                            style={[styles.petChip, isSelected && styles.petChipActive]}
+                                            onPress={() => setSelectedPet(p)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Text style={styles.petChipIcon}>{p.species === 'dog' ? '🐶' : '🐱'}</Text>
+                                            <Text style={[styles.petChipName, isSelected && styles.petChipNameActive]}>
+                                                {p.name}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
 
-                {/* Ô nhập triệu chứng */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>💬 Mô tả triệu chứng:</Text>
-                    <TextInput
-                        style={styles.textArea}
-                        placeholder="Vd: Bé bỏ ăn 2 hôm nay, nôn ra dịch vàng, uống nhiều nước..."
-                        multiline
-                        numberOfLines={4}
-                        value={query}
-                        onChangeText={setQuery}
-                        editable={!loading}
-                    />
-                </View>
-
-                <TouchableOpacity 
-                    style={[styles.btnAsk, loading && styles.btnDisabled]} 
-                    onPress={handleAskAI} 
-                    disabled={loading}
-                >
-                    {loading ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
-                        <Text style={styles.btnText}>Phân Tích Ngay ✨</Text>
-                    )}
-                </TouchableOpacity>
-
-                {/* Kết quả AI */}
-                {aiResult && (
-                    <View style={styles.resultBox}>
-                        <View style={[styles.badge, { backgroundColor: getUrgencyBadge(aiResult.urgency_level).color }]}>
-                            <Text style={styles.badgeText}>{getUrgencyBadge(aiResult.urgency_level).text}</Text>
-                        </View>
-
-                        <View style={styles.resultSection}>
-                            <Text style={styles.resultTitle}>💊 Lời Khuyên:</Text>
-                            <Text style={styles.resultText}>{aiResult.advice}</Text>
-                        </View>
-
-                        {/* Tài liệu tham khảo dùng để chẩn đoán (RAG) */}
-                        {aiResult.sources && aiResult.sources.length > 0 ? (
-                            <View style={styles.sourceBox}>
-                                <Text style={styles.sourceTitle}>📚 Dựa trên tài liệu bác sĩ cung cấp:</Text>
-                                {aiResult.sources.map((s) => (
-                                    <Text key={s.id} style={styles.sourceItem}>
-                                        • {s.title}{s.category ? ` (${s.category})` : ''}
-                                    </Text>
-                                ))}
-                            </View>
-                        ) : (
-                            <View style={styles.sourceBoxWarning}>
-                                <Text style={styles.sourceWarningText}>
-                                    ⚠️ Chưa có tài liệu tham khảo phù hợp trong cơ sở tri thức. Lời khuyên chỉ mang tính tổng quát, vui lòng đặt lịch khám trực tiếp để được chẩn đoán chính xác.
-                                </Text>
-                            </View>
-                        )}
-
-                        {aiResult.need_doctor && (
-                            <View style={styles.doctorAlert}>
-                                <Text style={styles.doctorAlertIcon}>⚠️</Text>
-                                <Text style={styles.doctorAlertText}>AI khuyên nên khám với bác sĩ</Text>
-                            </View>
-                        )}
-
-                        {/* Gợi Ý Phòng Khám */}
-                        {recommendedRoom && (
-                            <View style={styles.roomRecommendation}>
-                                <Text style={styles.roomLabel}>🏥 Phòng Được Đề Xuất:</Text>
-                                <View style={styles.roomCard}>
-                                    <View style={styles.roomInfo}>
-                                        <Text style={styles.roomCode}>{recommendedRoom.room_code}</Text>
-                                        <Text style={styles.roomName}>{recommendedRoom.room_name}</Text>
-                                        <Text style={styles.roomFloor}>Tầng {recommendedRoom.floor}</Text>
+                            {/* Tóm tắt thông tin bé đã chọn */}
+                            {selectedPet && (
+                                <View style={styles.petSummaryBox}>
+                                    <View style={styles.petSummaryRow}>
+                                        <Text style={styles.summaryLabel}>Loài & Giống:</Text>
+                                        <Text style={styles.summaryValue}>
+                                            {selectedPet.species === 'dog' ? 'Chó' : 'Mèo'} • {selectedPet.breed || 'Chưa rõ giống'}
+                                        </Text>
                                     </View>
-                                    {aiResult.room_reason && (
-                                        <View style={styles.roomReason}>
-                                            <Text style={styles.roomReasonLabel}>Lý do:</Text>
-                                            <Text style={styles.roomReasonText}>{aiResult.room_reason}</Text>
+                                    <View style={styles.petSummaryRow}>
+                                        <Text style={styles.summaryLabel}>Cân nặng:</Text>
+                                        <Text style={styles.summaryValue}>
+                                            {selectedPet.weight_kg ? `${selectedPet.weight_kg} kg` : 'Chưa cập nhật'}
+                                        </Text>
+                                    </View>
+                                    {selectedPet.birth_date && (
+                                        <View style={styles.petSummaryRow}>
+                                            <Text style={styles.summaryLabel}>Ngày sinh:</Text>
+                                            <Text style={styles.summaryValue}>{selectedPet.birth_date}</Text>
                                         </View>
                                     )}
                                 </View>
+                            )}
+                        </View>
 
-                                <TouchableOpacity 
-                                    style={[styles.bookButton, bookingLoading && styles.btnDisabled]}
-                                    onPress={handleBookAtRoom}
-                                    disabled={bookingLoading}
-                                >
-                                    {bookingLoading ? (
+                        {/* Thẻ Gợi Ý Triệu Chứng Phổ Biến */}
+                        <View style={styles.cardSection}>
+                            <Text style={styles.cardSectionTitle}>💡 Triệu chứng gợi ý nhanh</Text>
+                            <Text style={styles.cardSectionSubtitle}>Nhấn để tự động điền vào khung mô tả:</Text>
+                            <View style={styles.quickPromptsList}>
+                                {QUICK_PROMPTS.map((item, idx) => (
+                                    <TouchableOpacity
+                                        key={idx}
+                                        style={styles.promptChip}
+                                        onPress={() => setQuery(item.text)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={styles.promptChipText}>{item.label}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+                    </View>
+
+                    {/* CỘT PHẢI: KHUNG NHẬP MÔ TẢ & KẾT QUẢ TƯ VẤN AI */}
+                    <View style={[styles.rightColumn, isTabletOrDesktop && styles.rightColumnDesktop]}>
+                        {/* Khung Nhập Triệu Chứng */}
+                        <View style={styles.cardSection}>
+                            <Text style={styles.cardSectionTitle}>💬 Mô tả triệu chứng của bé</Text>
+                            <Text style={styles.cardSectionSubtitle}>
+                                Càng chi tiết về thời gian xuất hiện, phân, nước tiểu, thói quen ăn uống... AI chẩn đoán càng chính xác:
+                            </Text>
+                            <TextInput
+                                style={styles.textArea}
+                                placeholder="Ví dụ: Bé bỏ ăn từ hôm qua, nôn dịch vàng 2 lần, mệt mỏi nằm một chỗ, có uống ít nước..."
+                                placeholderTextColor={COLORS.textMuted}
+                                multiline
+                                numberOfLines={4}
+                                value={query}
+                                onChangeText={setQuery}
+                                editable={!loading}
+                            />
+
+                            <TouchableOpacity
+                                style={[styles.btnAsk, loading && styles.btnDisabled]}
+                                onPress={handleAskAI}
+                                disabled={loading}
+                                activeOpacity={0.8}
+                            >
+                                {loading ? (
+                                    <View style={styles.loadingRow}>
                                         <ActivityIndicator color="#fff" />
-                                    ) : (
-                                        <Text style={styles.bookButtonText}>📍 Đặt Lịch Tại Phòng Này</Text>
-                                    )}
+                                        <Text style={styles.btnText}>Đang tra cứu tài liệu & chẩn đoán...</Text>
+                                    </View>
+                                ) : (
+                                    <Text style={styles.btnText}>✨ Phân Tích Bằng Bác Sĩ AI</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* KẾT QUẢ AI CHẨN ĐOÁN (BẢN ĐÁNH GIÁ Y BẠ) */}
+                        {aiResult && (
+                            <View style={styles.resultCard}>
+                                <View style={styles.resultHeader}>
+                                    <Text style={styles.resultHeaderTitle}>📋 Kết Quả Phân Tích Y Khoa</Text>
+                                </View>
+
+                                {/* Urgency Banner */}
+                                {urgencyMeta && (
+                                    <View style={[styles.urgencyBanner, { backgroundColor: urgencyMeta.bg, borderColor: urgencyMeta.borderColor }]}>
+                                        <Text style={[styles.urgencyBannerText, { color: urgencyMeta.textColor }]}>
+                                            {urgencyMeta.text}
+                                        </Text>
+                                    </View>
+                                )}
+
+                                {/* Lời khuyên chi tiết */}
+                                <View style={styles.adviceBox}>
+                                    <Text style={styles.boxTitle}>🩺 Lời Khuyên & Hướng Xử Trí:</Text>
+                                    <Text style={styles.adviceText}>{aiResult.advice}</Text>
+                                </View>
+
+                                {/* Nguồn tài liệu RAG */}
+                                {aiResult.sources && aiResult.sources.length > 0 ? (
+                                    <View style={styles.sourceBox}>
+                                        <Text style={styles.sourceTitle}>📚 Tài liệu y khoa tham khảo:</Text>
+                                        {aiResult.sources.map((s) => (
+                                            <View key={s.id} style={styles.sourceItemRow}>
+                                                <Text style={styles.sourceBullet}>•</Text>
+                                                <Text style={styles.sourceText}>
+                                                    <Text style={{ fontWeight: 'bold' }}>{s.title}</Text>
+                                                    {s.category ? ` (Chuyên khoa: ${s.category})` : ''}
+                                                </Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                ) : (
+                                    <View style={styles.sourceBoxWarning}>
+                                        <Text style={styles.sourceWarningText}>
+                                            ⚠️ Không tìm thấy tài liệu đối sánh cụ thể trong kho tri thức. Lời khuyên trên chỉ mang tính tổng quát, vui lòng đặt lịch khám trực tiếp với bác sĩ.
+                                        </Text>
+                                    </View>
+                                )}
+
+                                {aiResult.need_doctor && (
+                                    <View style={styles.doctorAlertBox}>
+                                        <Text style={styles.doctorAlertIcon}>⚠️</Text>
+                                        <Text style={styles.doctorAlertText}>
+                                            Khuyến cáo: Tình trạng của bé cần được bác sĩ chuyên khoa thăm khám trực tiếp.
+                                        </Text>
+                                    </View>
+                                )}
+
+                                {/* Gợi ý phòng khám */}
+                                {recommendedRoom && (
+                                    <View style={styles.roomRecommendationBox}>
+                                        <Text style={styles.boxTitle}>🏥 Chuyên Khoa Đề Xuất Thăm Khám:</Text>
+                                        <View style={styles.roomCardInner}>
+                                            <View style={styles.roomBadge}>
+                                                <Text style={styles.roomBadgeCode}>{recommendedRoom.room_code}</Text>
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.roomName}>{recommendedRoom.room_name}</Text>
+                                                <Text style={styles.roomFloor}>Vị trí: Tầng {recommendedRoom.floor}</Text>
+                                                {aiResult.room_reason && (
+                                                    <Text style={styles.roomReasonText}>
+                                                        Lý do: {aiResult.room_reason}
+                                                    </Text>
+                                                )}
+                                            </View>
+                                        </View>
+
+                                        <TouchableOpacity
+                                            style={[styles.bookRoomBtn, bookingLoading && styles.btnDisabled]}
+                                            onPress={handleBookAtRoom}
+                                            disabled={bookingLoading}
+                                            activeOpacity={0.8}
+                                        >
+                                            {bookingLoading ? (
+                                                <ActivityIndicator color="#fff" />
+                                            ) : (
+                                                <Text style={styles.bookRoomBtnText}>
+                                                    📅 Đặt Lịch Tại Phòng {recommendedRoom.room_code} Ngay
+                                                </Text>
+                                            )}
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
+
+                                {/* Nút đặt lịch thường */}
+                                <TouchableOpacity
+                                    style={styles.manualBookBtn}
+                                    onPress={() => navigation.navigate('Booking')}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={styles.manualBookBtnText}>📅 Chuyển đến trang Đặt Lịch Tự Chọn</Text>
                                 </TouchableOpacity>
                             </View>
                         )}
-
-                        {/* Nút Đặt Lịch Thường */}
-                        <TouchableOpacity 
-                            style={styles.manualBookButton}
-                            onPress={() => navigation.navigate('Booking')}
-                        >
-                            <Text style={styles.manualBookButtonText}>📅 Đặt Lịch Ở Tab Khác</Text>
-                        </TouchableOpacity>
                     </View>
-                )}
+                </View>
 
-                <View style={{ height: 20 }} />
+                <View style={{ height: 40 }} />
             </ScrollView>
         </ResponsiveContainer>
     );
@@ -229,243 +357,365 @@ export default function AIChatScreen({ navigation }) {
 
 const styles = StyleSheet.create({
     container: {
-        flex: 1,
-        backgroundColor: COLORS.background,
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        paddingBottom: 24,
     },
     header: {
-        paddingBottom: 12,
+        marginBottom: 20,
+        marginTop: 4,
     },
     title: {
         fontSize: 24,
         fontWeight: 'bold',
-        color: COLORS.primary,
-        marginBottom: 4,
+        color: COLORS.text,
     },
     subtitle: {
         fontSize: 13,
         color: COLORS.textSecondary,
+        marginTop: 4,
+        lineHeight: 20,
     },
-    section: {
+
+    // Main layout
+    mainLayout: {
+        flexDirection: 'column',
+        gap: 16,
+    },
+    mainLayoutDesktop: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 24,
+    },
+    leftColumn: {
+        flex: 1,
+    },
+    leftColumnDesktop: {
+        flex: 1,
+    },
+    rightColumn: {
+        flex: 1,
+    },
+    rightColumnDesktop: {
+        flex: 1.6,
+    },
+
+    // Card section
+    cardSection: {
+        backgroundColor: COLORS.surface,
+        borderRadius: 18,
+        padding: 18,
         marginBottom: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        ...SHADOWS.sm,
     },
-    sectionLabel: {
-        fontSize: 14,
-        fontWeight: '600',
+    cardSectionTitle: {
+        fontSize: 15,
+        fontWeight: 'bold',
         color: COLORS.text,
-        marginBottom: 8,
+        marginBottom: 4,
     },
+    cardSectionSubtitle: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        marginBottom: 12,
+        lineHeight: 18,
+    },
+
+    // Pet picker
     petPicker: {
         flexDirection: 'row',
-        marginBottom: 8,
+        marginVertical: 8,
+        flexGrow: 0,
     },
     petChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.surfaceSubtle,
+        borderRadius: 12,
         paddingHorizontal: 14,
-        paddingVertical: 8,
-        borderRadius: 20,
-        backgroundColor: COLORS.surface,
-        borderWidth: 1,
+        paddingVertical: 10,
+        marginRight: 10,
+        borderWidth: 1.5,
         borderColor: COLORS.border,
-        marginRight: 8,
+        gap: 8,
     },
     petChipActive: {
-        backgroundColor: COLORS.primary,
+        backgroundColor: COLORS.primaryLight,
         borderColor: COLORS.primary,
     },
-    chipText: {
-        fontSize: 14,
+    petChipIcon: {
+        fontSize: 18,
+    },
+    petChipName: {
+        fontSize: 13,
+        fontWeight: '600',
         color: COLORS.textSecondary,
     },
-    chipTextActive: {
-        color: '#fff',
+    petChipNameActive: {
+        color: COLORS.primaryDark,
         fontWeight: 'bold',
     },
-    textArea: {
-        backgroundColor: COLORS.surface,
+
+    // Pet summary
+    petSummaryBox: {
+        backgroundColor: COLORS.surfaceSubtle,
         borderRadius: 12,
-        padding: 14,
-        fontSize: 13,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        textAlignVertical: 'top',
-        minHeight: 100,
+        padding: 12,
+        marginTop: 10,
+        gap: 6,
+    },
+    petSummaryRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    summaryLabel: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+    },
+    summaryValue: {
+        fontSize: 12,
+        fontWeight: '600',
         color: COLORS.text,
     },
-    btnAsk: {
-        backgroundColor: COLORS.secondary,
-        paddingVertical: 14,
+
+    // Quick prompts
+    quickPromptsList: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    promptChip: {
+        backgroundColor: COLORS.surfaceSubtle,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
         borderRadius: 10,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    promptChipText: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        fontWeight: '500',
+    },
+
+    // Text area & Ask button
+    textArea: {
+        backgroundColor: COLORS.surfaceSubtle,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        padding: 14,
+        fontSize: 14,
+        color: COLORS.text,
+        minHeight: 110,
+        textAlignVertical: 'top',
+        marginBottom: 14,
+        lineHeight: 22,
+    },
+    btnAsk: {
+        backgroundColor: COLORS.primary,
+        borderRadius: 12,
+        paddingVertical: 14,
         alignItems: 'center',
-        marginBottom: 16,
+        justifyContent: 'center',
+        ...SHADOWS.sm,
     },
     btnDisabled: {
         opacity: 0.6,
     },
     btnText: {
-        color: '#fff',
+        color: '#FFFFFF',
         fontSize: 15,
         fontWeight: 'bold',
     },
-    resultBox: {
-        marginTop: 16,
-        padding: 16,
+    loadingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+
+    // AI Result Card
+    resultCard: {
         backgroundColor: COLORS.surface,
-        borderRadius: 16,
+        borderRadius: 20,
+        padding: 20,
         borderWidth: 1,
         borderColor: COLORS.border,
-        elevation: 2,
+        ...SHADOWS.md,
     },
-    badge: {
-        paddingVertical: 8,
-        paddingHorizontal: 12,
-        borderRadius: 8,
-        alignSelf: 'flex-start',
-        marginBottom: 12,
+    resultHeader: {
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.border,
+        paddingBottom: 12,
+        marginBottom: 14,
     },
-    badgeText: {
-        color: '#fff',
+    resultHeaderTitle: {
+        fontSize: 17,
         fontWeight: 'bold',
-        fontSize: 12,
+        color: COLORS.text,
     },
-    resultSection: {
-        marginBottom: 12,
+    urgencyBanner: {
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 10,
+        borderWidth: 1.5,
+        marginBottom: 16,
     },
-    resultTitle: {
+    urgencyBannerText: {
+        fontSize: 13,
+        fontWeight: 'bold',
+        textAlign: 'center',
+    },
+    boxTitle: {
         fontSize: 14,
         fontWeight: 'bold',
         color: COLORS.text,
-        marginBottom: 6,
+        marginBottom: 8,
     },
-    resultText: {
-        fontSize: 13,
+    adviceBox: {
+        backgroundColor: COLORS.surfaceSubtle,
+        borderRadius: 14,
+        padding: 16,
+        marginBottom: 16,
+    },
+    adviceText: {
+        fontSize: 14,
         color: COLORS.text,
-        lineHeight: 20,
+        lineHeight: 22,
     },
     sourceBox: {
-        backgroundColor: COLORS.primaryLight,
-        borderRadius: 8,
-        padding: 12,
-        marginBottom: 12,
+        backgroundColor: '#EFF6FF',
+        borderRadius: 12,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: '#BFDBFE',
+        marginBottom: 16,
     },
     sourceTitle: {
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: 'bold',
-        color: COLORS.primaryDark,
-        marginBottom: 4,
+        color: '#1E40AF',
+        marginBottom: 6,
     },
-    sourceItem: {
+    sourceItemRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        marginTop: 4,
+    },
+    sourceBullet: {
+        color: '#1E40AF',
+        marginRight: 6,
+        fontSize: 14,
+    },
+    sourceText: {
         fontSize: 12,
-        color: COLORS.primaryDark,
-        marginTop: 2,
+        color: '#1E3A8A',
+        flex: 1,
+        lineHeight: 18,
     },
     sourceBoxWarning: {
-        backgroundColor: '#fff3cd',
-        borderRadius: 8,
+        backgroundColor: '#FFFBEB',
+        borderRadius: 12,
         padding: 12,
-        marginBottom: 12,
-        borderLeftWidth: 4,
-        borderLeftColor: COLORS.warning,
+        borderWidth: 1,
+        borderColor: '#FDE68A',
+        marginBottom: 16,
     },
     sourceWarningText: {
         fontSize: 12,
-        color: COLORS.text,
+        color: '#92400E',
         lineHeight: 18,
     },
-    doctorAlert: {
+    doctorAlertBox: {
         flexDirection: 'row',
-        backgroundColor: '#fff3cd',
-        borderRadius: 8,
+        alignItems: 'center',
+        backgroundColor: '#FEE2E2',
         padding: 12,
-        marginBottom: 12,
-        borderLeftWidth: 4,
-        borderLeftColor: COLORS.warning,
+        borderRadius: 12,
+        marginBottom: 16,
+        gap: 8,
     },
     doctorAlertIcon: {
-        fontSize: 18,
-        marginRight: 10,
+        fontSize: 16,
     },
     doctorAlertText: {
-        flex: 1,
-        fontSize: 13,
-        fontWeight: '500',
-        color: '#856404',
-    },
-    roomRecommendation: {
-        marginTop: 12,
-        paddingTop: 12,
-        borderTopWidth: 1,
-        borderTopColor: COLORS.border,
-    },
-    roomLabel: {
-        fontSize: 14,
+        fontSize: 12,
         fontWeight: '600',
-        color: COLORS.primary,
-        marginBottom: 10,
+        color: '#991B1B',
+        flex: 1,
     },
-    roomCard: {
-        backgroundColor: '#f0f8ff',
-        borderRadius: 10,
-        padding: 12,
-        marginBottom: 12,
+    roomRecommendationBox: {
+        backgroundColor: '#F0FDFA',
+        borderRadius: 16,
+        padding: 16,
         borderWidth: 1,
-        borderColor: COLORS.primaryLight,
+        borderColor: '#99F6E4',
+        marginBottom: 16,
     },
-    roomInfo: {
-        marginBottom: 10,
+    roomCardInner: {
+        flexDirection: 'row',
+        backgroundColor: COLORS.surface,
+        borderRadius: 12,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: '#CCFBF1',
+        marginBottom: 12,
+        alignItems: 'center',
+        gap: 12,
     },
-    roomCode: {
-        fontSize: 16,
+    roomBadge: {
+        width: 50,
+        height: 50,
+        borderRadius: 12,
+        backgroundColor: COLORS.primaryLight,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    roomBadgeCode: {
+        fontSize: 15,
         fontWeight: 'bold',
-        color: COLORS.primary,
+        color: COLORS.primaryDark,
     },
     roomName: {
-        fontSize: 13,
+        fontSize: 14,
+        fontWeight: 'bold',
         color: COLORS.text,
-        marginTop: 4,
     },
     roomFloor: {
         fontSize: 12,
         color: COLORS.textSecondary,
         marginTop: 2,
     },
-    roomReason: {
-        backgroundColor: '#fff',
-        borderRadius: 8,
-        padding: 10,
-        borderLeftWidth: 3,
-        borderLeftColor: COLORS.secondary,
-    },
-    roomReasonLabel: {
-        fontSize: 11,
-        fontWeight: 'bold',
-        color: COLORS.secondary,
-        marginBottom: 4,
-    },
     roomReasonText: {
         fontSize: 12,
-        color: COLORS.text,
-        lineHeight: 18,
+        color: COLORS.primaryDark,
+        marginTop: 4,
+        fontStyle: 'italic',
     },
-    bookButton: {
+    bookRoomBtn: {
         backgroundColor: COLORS.primary,
         paddingVertical: 12,
-        borderRadius: 10,
+        borderRadius: 12,
         alignItems: 'center',
-        marginBottom: 10,
     },
-    bookButtonText: {
-        color: '#fff',
-        fontSize: 14,
+    bookRoomBtnText: {
+        color: '#FFFFFF',
+        fontSize: 13,
         fontWeight: 'bold',
     },
-    manualBookButton: {
-        backgroundColor: COLORS.textSecondary,
-        paddingVertical: 10,
-        borderRadius: 8,
+    manualBookBtn: {
+        backgroundColor: COLORS.surfaceSubtle,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        paddingVertical: 12,
+        borderRadius: 12,
         alignItems: 'center',
     },
-    manualBookButtonText: {
-        color: '#fff',
+    manualBookBtnText: {
+        color: COLORS.textSecondary,
         fontSize: 13,
-        fontWeight: '500',
+        fontWeight: '600',
     },
 });

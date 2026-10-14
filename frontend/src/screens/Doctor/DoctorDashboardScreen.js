@@ -12,8 +12,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { COLORS } from '../../constants/theme';
+import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
+import { useResponsive } from '../../utils/responsive';
 import { getAllAppointmentsApi, updateAppointmentStatusApi } from '../../api/appointmentApi';
 import { createHealthRecordApi, getPetHealthRecordsApi } from '../../api/healthRecordApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -45,6 +46,7 @@ const STATUS_FILTERS = [
 ];
 
 export default function DoctorDashboardScreen({ route }) {
+  const { isTabletOrDesktop, isDesktop } = useResponsive();
   const completedOnly = route?.params?.mode === 'completed';
   const [statusFilter, setStatusFilter] = useState('all');
   const [appointments, setAppointments] = useState([]);
@@ -83,10 +85,10 @@ export default function DoctorDashboardScreen({ route }) {
     }
   };
 
-  // Tải lại mỗi khi quay lại tab để thấy ca vừa được hoàn thành ở tab kia
   useFocusEffect(useCallback(() => {
     if (completedOnly || /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) loadAppointments();
   }, [selectedDate, statusFilter, completedOnly]));
+
   useEffect(() => {
     listMedicinesApi().then((response) => {
       setMedicines(response.data.success ? response.data.data || [] : []);
@@ -236,205 +238,889 @@ export default function DoctorDashboardScreen({ route }) {
     <ResponsiveContainer style={styles.container}>
       <ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>{completedOnly ? 'ĐÃ KHÁM' : 'BẢNG ĐIỀU KHIỂN'}</Text>
-          <Text style={styles.title}>{completedOnly ? 'Ca khám đã hoàn thành' : 'Xin chào, bác sĩ'}</Text>
+          <Text style={styles.eyebrow}>{completedOnly ? 'ĐÃ KHÁM XONG' : 'BẢNG ĐIỀU KHIỂN BÁC SĨ'}</Text>
+          <Text style={styles.title}>{completedOnly ? 'Ca khám đã hoàn thành' : 'Quản lý ca khám bệnh 🩺'}</Text>
           <Text style={styles.subtitle}>
-            {completedOnly ? 'Chọn một ca để lập hồ sơ bệnh án và kê đơn thuốc.' : 'Theo dõi ca khám và chăm sóc hồ sơ thú cưng.'}
+            {completedOnly
+              ? 'Chọn ca khám để lập hồ sơ bệnh án số và kê đơn thuốc cho khách hàng.'
+              : 'Theo dõi tiếp nhận bệnh nhân, chẩn đoán và điều trị trong ngày.'}
           </Text>
         </View>
 
         {completedOnly ? (
           <View style={styles.statsRow}>
-            <Stat label="Tổng ca đã khám" value={appointments.length} color={COLORS.success} />
+            <Stat label="Tổng ca đã khám" value={appointments.length} color={COLORS.success} icon="✅" />
           </View>
         ) : (
           <>
             <View style={styles.statsRow}>
-              <Stat label="Tổng ca" value={appointments.length} color={COLORS.primary} />
-              <Stat label="Chờ duyệt" value={counts.pending || 0} color={COLORS.warning} />
-              <Stat label="Đã xong" value={counts.completed || 0} color={COLORS.success} />
+              <Stat label="Tổng ca khám" value={appointments.length} color={COLORS.primary} icon="📅" />
+              <Stat label="Chờ duyệt" value={counts.pending || 0} color={COLORS.warning} icon="⏳" />
+              <Stat label="Đã hoàn thành" value={counts.completed || 0} color={COLORS.success} icon="✨" />
             </View>
 
-            <View style={styles.dateRow}>
-              <Text style={styles.sectionTitle}>Lịch khám trong ngày</Text>
-              <TextInput
-                value={selectedDate}
-                onChangeText={setSelectedDate}
-                onSubmitEditing={() => loadAppointments(selectedDate)}
-                placeholder="YYYY-MM-DD"
-                style={styles.dateInput}
-                maxLength={10}
-              />
+            <View style={styles.filterSection}>
+              <View style={styles.filterBar}>
+                <View style={styles.datePickerWrap}>
+                  <Text style={styles.dateLabel}>Ngày khám:</Text>
+                  <TextInput
+                    value={selectedDate}
+                    onChangeText={setSelectedDate}
+                    onSubmitEditing={() => loadAppointments(selectedDate)}
+                    placeholder="YYYY-MM-DD"
+                    style={styles.dateInput}
+                    maxLength={10}
+                  />
+                  <TouchableOpacity style={styles.filterButton} onPress={() => loadAppointments(selectedDate)}>
+                    <Text style={styles.filterButtonText}>Xem</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                  {STATUS_FILTERS.map(([value, label]) => (
+                    <TouchableOpacity
+                      key={value}
+                      style={[styles.chip, statusFilter === value && styles.chipSelected]}
+                      onPress={() => setStatusFilter(value)}
+                    >
+                      <Text style={statusFilter === value ? styles.chipTextSelected : styles.chipText}>{label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {STATUS_FILTERS.map(([value, label]) => (
-                <TouchableOpacity
-                  key={value}
-                  style={[styles.chip, statusFilter === value && styles.chipSelected]}
-                  onPress={() => setStatusFilter(value)}
-                >
-                  <Text style={statusFilter === value ? styles.chipTextSelected : styles.chipText}>{label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity style={styles.filterButton} onPress={() => loadAppointments(selectedDate)}>
-              <Text style={styles.filterButtonText}>Xem lịch ngày này</Text>
-            </TouchableOpacity>
           </>
         )}
 
-        {loading ? <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} /> : appointments.length === 0 ? (
-          <Text style={styles.empty}>
-            {completedOnly ? 'Chưa có ca khám nào hoàn thành.' : `Không có lịch khám phù hợp trong ngày ${selectedDate}.`}
-          </Text>
-        ) : appointments.map((appointment) => (
-          <TouchableOpacity
-            key={appointment.id}
-            style={styles.appointment}
-            onPress={() => setSelectedAppointment(appointment)}
-          >
-            <View style={styles.appointmentTop}>
-              <Text style={styles.time}>
-                {completedOnly ? `${new Date(appointment.appointment_datetime).toLocaleDateString('vi-VN')} · ` : ''}
-                {new Date(appointment.appointment_datetime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-              </Text>
-              <Text style={[styles.status, { color: statusColor(appointment.status) }]}>{STATUS_LABELS[appointment.status]}</Text>
-            </View>
-            <Text style={styles.pet}>{appointment.pet_name} <Text style={styles.species}>({appointment.species})</Text></Text>
-            <Text style={styles.detail}>{appointment.service_name || 'Chưa có dịch vụ'} · {appointment.room_name}</Text>
-            <Text style={styles.owner}>Chủ nuôi: {appointment.customer_info}</Text>
-            {appointment.status === 'completed' && (
-              appointment.review_rating ? (
-                <View style={styles.review}>
-                  <Text style={styles.reviewStars}>{'⭐'.repeat(appointment.review_rating)}</Text>
-                  {appointment.review_comment ? <Text style={styles.reviewComment}>"{appointment.review_comment}"</Text> : null}
-                </View>
-              ) : <Text style={styles.noReview}>Chưa có đánh giá</Text>
-            )}
-          </TouchableOpacity>
-        ))}
+        {loading ? (
+          <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
+        ) : appointments.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>📋</Text>
+            <Text style={styles.empty}>
+              {completedOnly ? 'Chưa có ca khám nào hoàn thành.' : `Không có lịch khám phù hợp trong ngày ${selectedDate}.`}
+            </Text>
+          </View>
+        ) : (
+          <View style={[styles.appointmentGrid, isTabletOrDesktop && styles.appointmentGridDesktop]}>
+            {appointments.map((appointment) => {
+              const dateObj = new Date(appointment.appointment_datetime);
+              const timeStr = dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+              const dateStr = dateObj.toLocaleDateString('vi-VN');
+              const statusCfg = statusMeta(appointment.status);
+
+              return (
+                <TouchableOpacity
+                  key={appointment.id}
+                  style={[styles.appointmentCard, isTabletOrDesktop && styles.appointmentCardDesktop]}
+                  onPress={() => setSelectedAppointment(appointment)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.appointmentHeader}>
+                    <View style={styles.timeBadge}>
+                      <Text style={styles.timeText}>
+                        {completedOnly ? `${dateStr} · ` : ''}{timeStr}
+                      </Text>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
+                      <Text style={[styles.statusBadgeText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.petInfoRow}>
+                    <View style={styles.petAvatar}>
+                      <Text style={styles.petAvatarText}>
+                        {appointment.species === 'cat' ? '🐱' : '🐶'}
+                      </Text>
+                    </View>
+                    <View style={styles.petTextWrap}>
+                      <Text style={styles.petName}>{appointment.pet_name}</Text>
+                      <Text style={styles.petSpecies}>{appointment.species} {appointment.breed ? `· ${appointment.breed}` : ''}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.detailsBox}>
+                    <Text style={styles.detailText} numberOfLines={1}>
+                      🏥 {appointment.service_name || 'Khám tổng quát'} · {appointment.room_name}
+                    </Text>
+                    <Text style={styles.ownerText} numberOfLines={1}>
+                      👤 Chủ nuôi: {appointment.customer_info}
+                    </Text>
+                  </View>
+
+                  {appointment.status === 'completed' && (
+                    appointment.review_rating ? (
+                      <View style={styles.reviewBox}>
+                        <Text style={styles.reviewStars}>{'⭐'.repeat(appointment.review_rating)}</Text>
+                        {appointment.review_comment ? (
+                          <Text style={styles.reviewComment} numberOfLines={2}>"{appointment.review_comment}"</Text>
+                        ) : null}
+                      </View>
+                    ) : (
+                      <Text style={styles.noReview}>Chưa có đánh giá từ khách</Text>
+                    )
+                  )}
+
+                  <View style={styles.cardFooter}>
+                    <Text style={styles.cardActionHint}>Nhấn để xem chi tiết & xử lý →</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
 
-      <Modal visible={Boolean(selectedAppointment)} transparent animationType="slide" onRequestClose={() => setSelectedAppointment(null)}>
+      {/* Modal chi tiết ca khám */}
+      <Modal visible={Boolean(selectedAppointment)} transparent animationType="fade" onRequestClose={() => setSelectedAppointment(null)}>
         <View style={styles.overlay}>
-          <View style={styles.modal}>
-            {selectedAppointment && <>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{selectedAppointment.pet_name}</Text>
-                <TouchableOpacity onPress={() => setSelectedAppointment(null)}><Text style={styles.close}>X</Text></TouchableOpacity>
-              </View>
-              <Text style={styles.detail}>{selectedAppointment.species} · {selectedAppointment.breed || 'Chưa rõ giống'}</Text>
-              <Text style={styles.detail}>Chủ nuôi: {selectedAppointment.customer_info}</Text>
-              <Text style={styles.detail}>Dịch vụ: {selectedAppointment.service_name}</Text>
-              <Text style={styles.detail}>Ghi chú: {selectedAppointment.notes || 'Không có'}</Text>
-              {selectedAppointment.review_rating ? (
-                <Text style={styles.detail}>Đánh giá: {'⭐'.repeat(selectedAppointment.review_rating)}{selectedAppointment.review_comment ? ` - "${selectedAppointment.review_comment}"` : ''}</Text>
-              ) : null}
-              <View style={styles.actions}>
-                {selectedAppointment.status === 'pending' && <Action label="Xác nhận" color={COLORS.primary} onPress={() => updateStatus('confirmed')} />}
-                {selectedAppointment.status === 'confirmed' && <Action label="Hoàn thành" color={COLORS.success} onPress={() => updateStatus('completed')} />}
-                {(selectedAppointment.status === 'pending' || selectedAppointment.status === 'confirmed') && <Action label="Hủy lịch" color={COLORS.danger} onPress={() => updateStatus('cancelled')} />}
-                {selectedAppointment.status === 'completed' && <Action label="Lập hồ sơ bệnh án" color={COLORS.primaryDark} onPress={openRecordForm} />}
-                {selectedAppointment.status === 'completed' && <Action label="Kê đơn thuốc" color={COLORS.primary} onPress={prescribeForAppointment} />}
-              </View>
-              {saving && <ActivityIndicator color={COLORS.primary} />}
-            </>}
+          <View style={[styles.modal, isTabletOrDesktop && styles.modalCentered]}>
+            {selectedAppointment && (
+              <>
+                <View style={styles.modalHeader}>
+                  <View>
+                    <Text style={styles.modalTitle}>Chi tiết ca khám</Text>
+                    <Text style={styles.modalSubtitle}>Bé: {selectedAppointment.pet_name} ({selectedAppointment.species})</Text>
+                  </View>
+                  <TouchableOpacity style={styles.closeBtn} onPress={() => setSelectedAppointment(null)}>
+                    <Text style={styles.closeBtnText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView style={styles.modalScroll}>
+                  <View style={styles.infoSection}>
+                    <InfoRow label="Giống thú cưng" value={selectedAppointment.breed || 'Chưa rõ'} />
+                    <InfoRow label="Chủ nuôi" value={selectedAppointment.customer_info} />
+                    <InfoRow label="Dịch vụ" value={selectedAppointment.service_name || 'Chưa có'} />
+                    <InfoRow label="Phòng khám" value={selectedAppointment.room_name} />
+                    <InfoRow label="Thời gian" value={new Date(selectedAppointment.appointment_datetime).toLocaleString('vi-VN')} />
+                    <InfoRow label="Ghi chú khách hàng" value={selectedAppointment.notes || 'Không có ghi chú'} />
+                    {selectedAppointment.review_rating ? (
+                      <InfoRow
+                        label="Đánh giá"
+                        value={`${'⭐'.repeat(selectedAppointment.review_rating)} ${selectedAppointment.review_comment ? `("${selectedAppointment.review_comment}")` : ''}`}
+                      />
+                    ) : null}
+                  </View>
+
+                  <View style={styles.actions}>
+                    {selectedAppointment.status === 'pending' && (
+                      <Action label="Xác nhận lịch khám" color={COLORS.primary} onPress={() => updateStatus('confirmed')} />
+                    )}
+                    {selectedAppointment.status === 'confirmed' && (
+                      <Action label="Hoàn thành khám bệnh" color={COLORS.success} onPress={() => updateStatus('completed')} />
+                    )}
+                    {(selectedAppointment.status === 'pending' || selectedAppointment.status === 'confirmed') && (
+                      <Action label="Hủy lịch hẹn" color={COLORS.danger} onPress={() => updateStatus('cancelled')} />
+                    )}
+                    {selectedAppointment.status === 'completed' && (
+                      <>
+                        <Action label="📋 Lập hồ sơ bệnh án" color={COLORS.primaryDark} onPress={openRecordForm} />
+                        <Action label="💊 Kê đơn thuốc điện tử" color={COLORS.primary} onPress={prescribeForAppointment} />
+                      </>
+                    )}
+                  </View>
+                  {saving && <ActivityIndicator color={COLORS.primary} style={{ marginTop: 16 }} />}
+                </ScrollView>
+              </>
+            )}
           </View>
         </View>
       </Modal>
 
-      <Modal visible={recordVisible} transparent animationType="slide" onRequestClose={() => setRecordVisible(false)}>
-        <View style={styles.overlay}><View style={styles.modal}>
-          <View style={styles.modalHeader}><Text style={styles.modalTitle}>Lập hồ sơ bệnh án</Text><TouchableOpacity onPress={() => setRecordVisible(false)}><Text style={styles.close}>X</Text></TouchableOpacity></View>
-          <ScrollView>
-            <Text style={styles.fieldLabel}>Loại hồ sơ</Text>
-            <View style={styles.typeRow}>{RECORD_TYPES.map(([value, label]) => <TouchableOpacity key={value} onPress={() => setForm({ ...form, record_type: value })} style={[styles.typeButton, form.record_type === value && styles.typeButtonSelected]}><Text style={form.record_type === value ? styles.typeTextSelected : styles.typeText}>{label}</Text></TouchableOpacity>)}</View>
-            <Field label="Tiêu đề" value={form.title} onChangeText={(title) => setForm({ ...form, title })} />
-            <Field label="Chẩn đoán" value={form.diagnosis} onChangeText={(diagnosis) => setForm({ ...form, diagnosis })} multiline />
-            <Field label="Hướng điều trị" value={form.treatment_plan} onChangeText={(treatment_plan) => setForm({ ...form, treatment_plan })} multiline />
-            <Field label="Ngày thực hiện (YYYY-MM-DD)" value={form.performed_date} onChangeText={(performed_date) => setForm({ ...form, performed_date })} />
-            <Field label="Ngày tái khám (không bắt buộc)" value={form.next_due_date} onChangeText={(next_due_date) => setForm({ ...form, next_due_date })} />
-            <TouchableOpacity style={styles.saveButton} onPress={saveRecord} disabled={saving}><Text style={styles.saveText}>{saving ? 'Đang lưu...' : 'Lưu hồ sơ'}</Text></TouchableOpacity>
-          </ScrollView>
-        </View></View>
-      </Modal>
-
-      <Modal visible={prescriptionVisible} transparent animationType="slide" onRequestClose={() => setPrescriptionVisible(false)}>
-        <View style={styles.overlay}><View style={styles.modal}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Kê đơn thuốc{prescriptionContext ? ` - ${prescriptionContext.pet_name}` : ''}</Text>
-            <TouchableOpacity onPress={() => setPrescriptionVisible(false)}><Text style={styles.close}>X</Text></TouchableOpacity>
-          </View>
-          <ScrollView>
-            {prescriptionItems.length === 0 ? (
-              <Text style={styles.empty}>Chưa có thuốc nào trong đơn.</Text>
-            ) : prescriptionItems.map((item, index) => (
-              <View key={item.medicine_id} style={styles.itemRow}>
-                <View style={styles.itemHeader}>
-                  <Text style={styles.itemName}>{item.name} <Text style={styles.species}>({item.unit})</Text></Text>
-                  <TouchableOpacity onPress={() => removePrescriptionItem(index)}><Text style={styles.removeText}>Xóa</Text></TouchableOpacity>
-                </View>
-                <Field label="Liều dùng" value={item.dosage} onChangeText={(value) => updatePrescriptionItem(index, 'dosage', value)} />
-                <Field label="Số lượng" value={String(item.quantity)} onChangeText={(value) => updatePrescriptionItem(index, 'quantity', value.replace(/[^0-9]/g, ''))} keyboardType="numeric" />
+      {/* Modal Lập hồ sơ bệnh án */}
+      <Modal visible={recordVisible} transparent animationType="fade" onRequestClose={() => setRecordVisible(false)}>
+        <View style={styles.overlay}>
+          <View style={[styles.modal, isTabletOrDesktop && styles.modalCentered]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Lập hồ sơ bệnh án</Text>
+                <Text style={styles.modalSubtitle}>Ghi chép tình trạng và phác đồ điều trị</Text>
               </View>
-            ))}
-            <TouchableOpacity style={styles.filterButton} onPress={() => setMedicinePickerVisible(true)}>
-              <Text style={styles.filterButtonText}>+ Thêm thuốc</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.saveButton} onPress={submitPrescription} disabled={saving}>
-              <Text style={styles.saveText}>{saving ? 'Đang lưu...' : 'Lưu đơn thuốc'}</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View></View>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setRecordVisible(false)}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalScroll}>
+              <Text style={styles.fieldLabel}>Loại hồ sơ</Text>
+              <View style={styles.typeRow}>
+                {RECORD_TYPES.map(([value, label]) => (
+                  <TouchableOpacity
+                    key={value}
+                    onPress={() => setForm({ ...form, record_type: value })}
+                    style={[styles.typeButton, form.record_type === value && styles.typeButtonSelected]}
+                  >
+                    <Text style={form.record_type === value ? styles.typeTextSelected : styles.typeText}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Field label="Tiêu đề hồ sơ" value={form.title} onChangeText={(title) => setForm({ ...form, title })} placeholder="Ví dụ: Khám tổng quát & xét nghiệm máu" />
+              <Field label="Chẩn đoán lâm sàng" value={form.diagnosis} onChangeText={(diagnosis) => setForm({ ...form, diagnosis })} multiline placeholder="Mô tả kết quả khám và chẩn đoán bệnh..." />
+              <Field label="Hướng điều trị & dặn dò" value={form.treatment_plan} onChangeText={(treatment_plan) => setForm({ ...form, treatment_plan })} multiline placeholder="Phác đồ điều trị, chăm sóc tại nhà..." />
+              <Field label="Ngày thực hiện (YYYY-MM-DD)" value={form.performed_date} onChangeText={(performed_date) => setForm({ ...form, performed_date })} />
+              <Field label="Ngày tái khám (YYYY-MM-DD, không bắt buộc)" value={form.next_due_date} onChangeText={(next_due_date) => setForm({ ...form, next_due_date })} placeholder="Để trống nếu không hẹn khám lại" />
+              <TouchableOpacity style={styles.saveButton} onPress={saveRecord} disabled={saving}>
+                <Text style={styles.saveText}>{saving ? 'Đang lưu hồ sơ...' : 'Lưu hồ sơ bệnh án'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
 
-      <Modal visible={medicinePickerVisible} transparent animationType="fade" onRequestClose={() => setMedicinePickerVisible(false)}>
-        <View style={styles.overlay}><View style={styles.modal}>
-          <View style={styles.modalHeader}><Text style={styles.modalTitle}>Chọn thuốc</Text><TouchableOpacity onPress={() => setMedicinePickerVisible(false)}><Text style={styles.close}>X</Text></TouchableOpacity></View>
-          <ScrollView>
-            {medicines.map((medicine) => (
-              <TouchableOpacity key={medicine.id} style={styles.pickerItem} onPress={() => addMedicineToPrescription(medicine)}>
-                <Text style={styles.pickerItemName}>{medicine.name}</Text>
-                <Text style={styles.detail}>{Number(medicine.price).toLocaleString('vi-VN')}đ / {medicine.unit} · Tồn kho: {medicine.stock_quantity}</Text>
+      {/* Modal Kê đơn thuốc */}
+      <Modal visible={prescriptionVisible} transparent animationType="fade" onRequestClose={() => setPrescriptionVisible(false)}>
+        <View style={styles.overlay}>
+          <View style={[styles.modal, isTabletOrDesktop && styles.modalCentered]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Kê đơn thuốc</Text>
+                <Text style={styles.modalSubtitle}>{prescriptionContext ? `Bé ${prescriptionContext.pet_name}` : ''}</Text>
+              </View>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setPrescriptionVisible(false)}>
+                <Text style={styles.closeBtnText}>✕</Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View></View>
+            </View>
+            <ScrollView style={styles.modalScroll}>
+              {prescriptionItems.length === 0 ? (
+                <View style={styles.emptyPrescription}>
+                  <Text style={styles.emptyPrescriptionText}>Chưa có loại thuốc nào trong đơn.</Text>
+                  <Text style={styles.emptyPrescriptionSub}>Bấm "+ Thêm thuốc" để chọn từ danh mục quầy thuốc.</Text>
+                </View>
+              ) : (
+                prescriptionItems.map((item, index) => (
+                  <View key={item.medicine_id} style={styles.itemRow}>
+                    <View style={styles.itemHeader}>
+                      <Text style={styles.itemName}>{item.name} <Text style={styles.species}>({item.unit})</Text></Text>
+                      <TouchableOpacity onPress={() => removePrescriptionItem(index)}>
+                        <Text style={styles.removeText}>Xóa thuốc</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Field label="Liều dùng & cách dùng" value={item.dosage} onChangeText={(value) => updatePrescriptionItem(index, 'dosage', value)} placeholder="VD: Uống 1 viên sau ăn, ngày 2 lần" />
+                    <Field label="Số lượng" value={String(item.quantity)} onChangeText={(value) => updatePrescriptionItem(index, 'quantity', value.replace(/[^0-9]/g, ''))} keyboardType="numeric" />
+                  </View>
+                ))
+              )}
+
+              <TouchableOpacity style={styles.addMedicineBtn} onPress={() => setMedicinePickerVisible(true)}>
+                <Text style={styles.addMedicineBtnText}>+ Thêm thuốc vào đơn</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.saveButton} onPress={submitPrescription} disabled={saving}>
+                <Text style={styles.saveText}>{saving ? 'Đang lưu đơn thuốc...' : 'Hoàn tất & Lưu đơn thuốc'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Chọn thuốc */}
+      <Modal visible={medicinePickerVisible} transparent animationType="fade" onRequestClose={() => setMedicinePickerVisible(false)}>
+        <View style={styles.overlay}>
+          <View style={[styles.modal, isTabletOrDesktop && styles.modalCentered]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Chọn thuốc từ kho</Text>
+                <Text style={styles.modalSubtitle}>Kho thuốc đang có {medicines.length} mặt hàng</Text>
+              </View>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setMedicinePickerVisible(false)}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalScroll}>
+              {medicines.map((medicine) => (
+                <TouchableOpacity key={medicine.id} style={styles.pickerItem} onPress={() => addMedicineToPrescription(medicine)}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.pickerItemName}>{medicine.name}</Text>
+                    <Text style={styles.pickerItemDetail}>
+                      {Number(medicine.price).toLocaleString('vi-VN')}đ / {medicine.unit} · Tồn kho: {medicine.stock_quantity}
+                    </Text>
+                  </View>
+                  <Text style={styles.pickerAddText}>+ Chọn</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </ResponsiveContainer>
   );
 }
 
-function Stat({ label, value, color }) { return <View style={styles.stat}><Text style={[styles.statValue, { color }]}>{value}</Text><Text style={styles.statLabel}>{label}</Text></View>; }
-function Action({ label, color, onPress }) { return <TouchableOpacity style={[styles.action, { backgroundColor: color }]} onPress={onPress}><Text style={styles.actionText}>{label}</Text></TouchableOpacity>; }
-function Field({ label, multiline, ...props }) { return <View><Text style={styles.fieldLabel}>{label}</Text><TextInput {...props} multiline={multiline} style={[styles.input, multiline && styles.multiline]} /></View>; }
-function statusColor(status) { return ({ pending: COLORS.warning, confirmed: COLORS.secondary, completed: COLORS.success, cancelled: COLORS.danger })[status] || COLORS.textSecondary; }
+function Stat({ label, value, color, icon }) {
+  return (
+    <View style={styles.stat}>
+      <View style={styles.statTop}>
+        <Text style={styles.statIcon}>{icon}</Text>
+        <Text style={[styles.statValue, { color }]}>{value}</Text>
+      </View>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function InfoRow({ label, value }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoRowLabel}>{label}</Text>
+      <Text style={styles.infoRowValue}>{value}</Text>
+    </View>
+  );
+}
+
+function Action({ label, color, onPress }) {
+  return (
+    <TouchableOpacity style={[styles.action, { backgroundColor: color }]} onPress={onPress}>
+      <Text style={styles.actionText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function Field({ label, multiline, placeholder, ...props }) {
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        {...props}
+        placeholder={placeholder}
+        placeholderTextColor={COLORS.textTertiary || '#94A3B8'}
+        multiline={multiline}
+        style={[styles.input, multiline && styles.multiline]}
+      />
+    </View>
+  );
+}
+
+function statusMeta(status) {
+  switch (status) {
+    case 'pending':
+      return { label: 'Chờ duyệt', color: '#D97706', bg: '#FEF3C7' };
+    case 'confirmed':
+      return { label: 'Đã xác nhận', color: '#0D9488', bg: '#CCFBF1' };
+    case 'completed':
+      return { label: 'Hoàn thành', color: '#16A34A', bg: '#DCFCE7' };
+    case 'cancelled':
+      return { label: 'Đã hủy', color: '#DC2626', bg: '#FEE2E2' };
+    default:
+      return { label: status, color: '#64748B', bg: '#F1F5F9' };
+  }
+}
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  header: { padding: 20, paddingBottom: 12 },
-  eyebrow: { color: COLORS.primary, fontSize: 12, fontWeight: '700', letterSpacing: 1 },
-  title: { color: COLORS.text, fontSize: 28, fontWeight: '800', marginTop: 5 },
-  subtitle: { color: COLORS.textSecondary, marginTop: 6 },
-  statsRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 18 },
-  stat: { flex: 1, backgroundColor: COLORS.surface, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: COLORS.border },
-  statValue: { fontSize: 24, fontWeight: '800' }, statLabel: { color: COLORS.textSecondary, marginTop: 3, fontSize: 12 },
-  dateRow: { paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  sectionTitle: { color: COLORS.text, fontWeight: '800', fontSize: 18 },
-  dateInput: { backgroundColor: COLORS.surface, borderColor: COLORS.border, borderWidth: 1, borderRadius: 8, padding: 8, width: 112, textAlign: 'center' },
-  filterButton: { margin: 12, marginTop: 10, backgroundColor: COLORS.primaryLight, padding: 11, borderRadius: 9, alignItems: 'center' },
-  filterButtonText: { color: COLORS.primaryDark, fontWeight: '700' },
-  loader: { marginTop: 30 }, empty: { color: COLORS.textSecondary, textAlign: 'center', padding: 30 },
-  appointment: { backgroundColor: COLORS.surface, borderRadius: 14, padding: 16, marginHorizontal: 16, marginBottom: 10, borderLeftWidth: 4, borderLeftColor: COLORS.primary },
-  appointmentTop: { flexDirection: 'row', justifyContent: 'space-between' }, time: { color: COLORS.primaryDark, fontWeight: '800', fontSize: 16 }, status: { fontWeight: '700', fontSize: 12 },
-  pet: { color: COLORS.text, fontWeight: '800', fontSize: 18, marginTop: 10 }, species: { color: COLORS.textSecondary, fontWeight: '400', fontSize: 14 }, detail: { color: COLORS.textSecondary, marginTop: 5 }, owner: { color: COLORS.textSecondary, fontSize: 12, marginTop: 10 },
-  overlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.45)', justifyContent: 'flex-end' }, modal: { backgroundColor: COLORS.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, maxHeight: '90%' }, modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }, modalTitle: { color: COLORS.text, fontSize: 21, fontWeight: '800' }, close: { color: COLORS.textSecondary, fontWeight: '800', padding: 8 }, actions: { gap: 10, marginTop: 20 }, action: { borderRadius: 10, padding: 13, alignItems: 'center' }, actionText: { color: '#fff', fontWeight: '800' },
-  fieldLabel: { color: COLORS.text, fontWeight: '700', marginTop: 12, marginBottom: 6 }, input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 9, padding: 11, color: COLORS.text, backgroundColor: COLORS.background }, multiline: { minHeight: 72, textAlignVertical: 'top' }, typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, typeButton: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 8 }, typeButtonSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary }, typeText: { color: COLORS.textSecondary, fontSize: 12 }, typeTextSelected: { color: '#fff', fontSize: 12, fontWeight: '700' }, saveButton: { backgroundColor: COLORS.primary, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 20, marginBottom: 12 }, saveText: { color: '#fff', fontWeight: '800' },
-  itemRow: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 10, padding: 12, marginBottom: 10 }, itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, itemName: { color: COLORS.text, fontWeight: '700', fontSize: 15 }, removeText: { color: COLORS.danger, fontWeight: '700' },
-  pickerItem: { borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 12 }, pickerItemName: { color: COLORS.text, fontWeight: '700', fontSize: 15 },
-  chipRow: { gap: 8, paddingHorizontal: 16, paddingTop: 10 }, chip: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 18, paddingVertical: 7, paddingHorizontal: 14, backgroundColor: COLORS.surface }, chipSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary }, chipText: { color: COLORS.textSecondary, fontWeight: '600', fontSize: 13 }, chipTextSelected: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  review: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: COLORS.border }, reviewStars: { fontSize: 14 }, reviewComment: { color: COLORS.textSecondary, fontStyle: 'italic', marginTop: 4 }, noReview: { color: COLORS.textSecondary, fontSize: 12, marginTop: 10 },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  scrollContent: {
+    paddingBottom: 36,
+  },
+  header: {
+    paddingTop: 16,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+  },
+  eyebrow: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  title: {
+    color: COLORS.text,
+    fontSize: 26,
+    fontWeight: '800',
+    marginTop: 4,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+  },
+  stat: {
+    flex: 1,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.sm,
+  },
+  statTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  statIcon: {
+    fontSize: 20,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: '800',
+  },
+  statLabel: {
+    color: COLORS.textSecondary,
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filterSection: {
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  filterBar: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    ...SHADOWS.sm,
+  },
+  datePickerWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  dateLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.text,
+  },
+  dateInput: {
+    backgroundColor: COLORS.background,
+    borderColor: COLORS.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    width: 130,
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  filterButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  filterButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  chipRow: {
+    gap: 8,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 20,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+    backgroundColor: COLORS.background,
+  },
+  chipSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  chipText: {
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  chipTextSelected: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  loader: {
+    marginTop: 40,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  emptyIcon: {
+    fontSize: 40,
+    marginBottom: 12,
+  },
+  empty: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  appointmentGrid: {
+    paddingHorizontal: 16,
+    gap: 14,
+  },
+  appointmentGridDesktop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  appointmentCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.sm,
+  },
+  appointmentCardDesktop: {
+    width: '48.8%',
+  },
+  appointmentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  timeBadge: {
+    backgroundColor: COLORS.background,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  timeText: {
+    color: COLORS.primaryDark,
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  statusBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+  },
+  statusBadgeText: {
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  petInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  petAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  petAvatarText: {
+    fontSize: 22,
+  },
+  petTextWrap: {
+    flex: 1,
+  },
+  petName: {
+    color: COLORS.text,
+    fontWeight: '800',
+    fontSize: 17,
+  },
+  petSpecies: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  detailsBox: {
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    padding: 12,
+    gap: 6,
+    marginBottom: 10,
+  },
+  detailText: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  ownerText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  reviewBox: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  reviewStars: {
+    fontSize: 14,
+  },
+  reviewComment: {
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
+    fontSize: 13,
+    marginTop: 3,
+  },
+  noReview: {
+    color: COLORS.textTertiary || '#94A3B8',
+    fontSize: 12,
+    marginTop: 6,
+  },
+  cardFooter: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 10,
+  },
+  cardActionHint: {
+    color: COLORS.primary,
+    fontWeight: '700',
+    fontSize: 12,
+    textAlign: 'right',
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modal: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxHeight: '90%',
+    ...SHADOWS.lg,
+  },
+  modalCentered: {
+    maxWidth: 580,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  modalTitle: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  modalSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginTop: 3,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeBtnText: {
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  modalScroll: {
+    maxHeight: 520,
+  },
+  infoSection: {
+    backgroundColor: COLORS.background,
+    borderRadius: 14,
+    padding: 14,
+    gap: 10,
+    marginBottom: 16,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  infoRowLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    minWidth: 120,
+  },
+  infoRowValue: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  actions: {
+    gap: 10,
+  },
+  action: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  actionText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 15,
+  },
+  fieldLabel: {
+    color: COLORS.text,
+    fontWeight: '700',
+    fontSize: 13,
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    color: COLORS.text,
+    backgroundColor: COLORS.background,
+    fontSize: 14,
+  },
+  multiline: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  typeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 14,
+  },
+  typeButton: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    backgroundColor: COLORS.background,
+  },
+  typeButtonSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  typeText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  typeTextSelected: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  saveButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  saveText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 15,
+  },
+  emptyPrescription: {
+    padding: 24,
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    marginBottom: 14,
+  },
+  emptyPrescriptionText: {
+    color: COLORS.text,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  emptyPrescriptionSub: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  itemRow: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    backgroundColor: COLORS.background,
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  itemName: {
+    color: COLORS.text,
+    fontWeight: '800',
+    fontSize: 15,
+  },
+  species: {
+    color: COLORS.textSecondary,
+    fontWeight: '400',
+    fontSize: 13,
+  },
+  removeText: {
+    color: COLORS.danger,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  addMedicineBtn: {
+    backgroundColor: COLORS.primaryLight,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  addMedicineBtnText: {
+    color: COLORS.primaryDark,
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  pickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+  },
+  pickerItemName: {
+    color: COLORS.text,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  pickerItemDetail: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 3,
+  },
+  pickerAddText: {
+    color: COLORS.primary,
+    fontWeight: '800',
+    fontSize: 14,
+  },
 });

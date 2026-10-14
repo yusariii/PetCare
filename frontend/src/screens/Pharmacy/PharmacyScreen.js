@@ -1,18 +1,29 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { COLORS } from '../../constants/theme';
+import {
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
+import { useResponsive } from '../../utils/responsive';
 import { getMyPetsApi } from '../../api/petApi';
 import { getPetPrescriptionsApi, getPrescriptionDetailApi } from '../../api/prescriptionApi';
 import { createMedicineOrderApi } from '../../api/medicineOrderApi';
 
 const ORDER_STATUS_LABELS = {
-  pending: 'Chờ thanh toán tại quầy',
-  paid: 'Đã thanh toán',
-  cancelled: 'Đã hủy',
+  pending: { label: 'Chờ thanh toán tại quầy', bg: '#FEF3C7', textColor: '#B45309' },
+  paid: { label: 'Đã thanh toán & nhận thuốc', bg: '#D1FAE5', textColor: '#047857' },
+  cancelled: { label: 'Đã hủy', bg: '#FEE2E2', textColor: '#B91C1C' },
 };
 
 export default function PharmacyScreen() {
+  const { isTabletOrDesktop } = useResponsive();
   const [pets, setPets] = useState([]);
   const [selectedPetId, setSelectedPetId] = useState(null);
   const [prescriptions, setPrescriptions] = useState([]);
@@ -75,7 +86,7 @@ export default function PharmacyScreen() {
     try {
       setOrderingId(prescriptionId);
       await createMedicineOrderApi(prescriptionId);
-      Alert.alert('Thành công', 'Đã giữ chỗ đơn thuốc. Vui lòng đến quầy thuốc để thanh toán và nhận thuốc.');
+      Alert.alert('Thành công', 'Đã giữ chỗ đơn thuốc thành công! Vui lòng đến quầy thuốc bệnh viện để thanh toán và nhận thuốc.');
       await loadPrescriptions(selectedPetId);
     } catch (error) {
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể đặt mua thuốc');
@@ -87,109 +98,397 @@ export default function PharmacyScreen() {
   return (
     <ResponsiveContainer style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>ĐƠN THUỐC</Text>
-        <Text style={styles.title}>Đơn thuốc & Mua thuốc</Text>
-        <Text style={styles.subtitle}>Xem đơn thuốc bác sĩ đã kê và giữ chỗ mua tại quầy.</Text>
+        <Text style={styles.title}>Đơn Thuốc Của Bé 💊</Text>
+        <Text style={styles.subtitle}>Xem đơn thuốc do bác sĩ kê và đặt giữ chỗ mua thuốc tại quầy viện.</Text>
       </View>
 
+      {/* Pet selector chips */}
       {pets.length > 1 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.petRow} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
-          {pets.map((pet) => (
-            <TouchableOpacity
-              key={pet.id}
-              style={[styles.petChip, selectedPetId === pet.id && styles.petChipSelected]}
-              onPress={() => setSelectedPetId(pet.id)}
-            >
-              <Text style={selectedPetId === pet.id ? styles.petChipTextSelected : styles.petChipText}>{pet.name}</Text>
-            </TouchableOpacity>
-          ))}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.petRow}
+          contentContainerStyle={styles.petRowContent}
+        >
+          {pets.map((pet) => {
+            const isSelected = selectedPetId === pet.id;
+            return (
+              <TouchableOpacity
+                key={pet.id}
+                style={[styles.petChip, isSelected && styles.petChipSelected]}
+                onPress={() => setSelectedPetId(pet.id)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.petIcon}>{pet.species === 'dog' ? '🐶' : '🐱'}</Text>
+                <Text style={[styles.petChipText, isSelected && styles.petChipTextSelected]}>
+                  {pet.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       )}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
       >
-        {loading ? <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} /> : prescriptions.length === 0 ? (
-          <Text style={styles.empty}>Thú cưng của bạn chưa có đơn thuốc nào.</Text>
-        ) : prescriptions.map((prescription) => {
-          const detail = detailCache[prescription.id];
-          const expanded = expandedId === prescription.id;
-          const canBuy = !prescription.latest_order_status || prescription.latest_order_status === 'cancelled';
-          return (
-            <View key={prescription.id} style={styles.card}>
-              <TouchableOpacity onPress={() => toggleExpand(prescription)}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.recordTitle}>{prescription.health_record_title}</Text>
-                  <Text style={styles.date}>{new Date(prescription.created_at).toLocaleDateString('vi-VN')}</Text>
-                </View>
-                <Text style={styles.doctor}>Bác sĩ: {prescription.doctor_name}</Text>
-                {prescription.latest_order_status && (
-                  <Text style={styles.orderStatus}>Trạng thái mua: {ORDER_STATUS_LABELS[prescription.latest_order_status]}</Text>
-                )}
-              </TouchableOpacity>
+        {loading ? (
+          <View style={styles.centerBox}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={styles.loadingText}>Đang tải danh sách đơn thuốc...</Text>
+          </View>
+        ) : prescriptions.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyIcon}>💊</Text>
+            <Text style={styles.emptyTitle}>Chưa có đơn thuốc nào</Text>
+            <Text style={styles.emptySubtitle}>Bé cưng của bạn hiện chưa có đơn thuốc nào được kê từ bác sĩ.</Text>
+          </View>
+        ) : (
+          <View style={[styles.prescriptionGrid, isTabletOrDesktop && styles.prescriptionGridDesktop]}>
+            {prescriptions.map((prescription) => {
+              const detail = detailCache[prescription.id];
+              const expanded = expandedId === prescription.id;
+              const canBuy = !prescription.latest_order_status || prescription.latest_order_status === 'cancelled';
+              const orderStatusMeta = prescription.latest_order_status
+                ? ORDER_STATUS_LABELS[prescription.latest_order_status]
+                : null;
 
-              {expanded && (
-                <View style={styles.detailBox}>
-                  {!detail ? <ActivityIndicator color={COLORS.primary} /> : (
-                    <>
-                      {detail.items.map((item) => (
-                        <View key={item.id} style={styles.itemRow}>
-                          <Text style={styles.itemName}>{item.medicine_name} x{item.quantity} {item.unit}</Text>
-                          <Text style={styles.itemDosage}>Liều dùng: {item.dosage}</Text>
-                        </View>
-                      ))}
-                      <Text style={styles.total}>
-                        Tổng tiền: {detail.items.reduce((sum, i) => sum + Number(i.unit_price) * i.quantity, 0).toLocaleString('vi-VN')}đ
+              return (
+                <View
+                  key={prescription.id}
+                  style={[styles.card, isTabletOrDesktop && styles.cardDesktop]}
+                >
+                  <TouchableOpacity
+                    onPress={() => toggleExpand(prescription)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.cardHeader}>
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <Text style={styles.recordTitle}>{prescription.health_record_title}</Text>
+                        <Text style={styles.doctor}>👨‍⚕️ Bác sĩ: {prescription.doctor_name}</Text>
+                      </View>
+                      <View style={styles.dateBadge}>
+                        <Text style={styles.dateText}>
+                          {new Date(prescription.created_at).toLocaleDateString('vi-VN')}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {orderStatusMeta && (
+                      <View style={[styles.orderStatusBadge, { backgroundColor: orderStatusMeta.bg }]}>
+                        <Text style={[styles.orderStatusText, { color: orderStatusMeta.textColor }]}>
+                          Trạng thái: {orderStatusMeta.label}
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={styles.expandRow}>
+                      <Text style={styles.expandText}>
+                        {expanded ? 'Thu gọn đơn thuốc ▲' : 'Xem danh mục thuốc chi tiết ▼'}
                       </Text>
-                      {canBuy ? (
-                        <TouchableOpacity
-                          style={styles.buyButton}
-                          onPress={() => buyMedicine(prescription.id)}
-                          disabled={orderingId === prescription.id}
-                        >
-                          {orderingId === prescription.id ? <ActivityIndicator color="#fff" /> : <Text style={styles.buyButtonText}>Giữ chỗ mua thuốc (thanh toán tại quầy)</Text>}
-                        </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+
+                  {expanded && (
+                    <View style={styles.detailBox}>
+                      {!detail ? (
+                        <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 12 }} />
                       ) : (
-                        <Text style={styles.alreadyOrdered}>✓ Đã đặt giữ chỗ - thanh toán tại quầy thuốc</Text>
+                        <>
+                          <Text style={styles.itemsHeader}>Danh sách thuốc được kê:</Text>
+                          {detail.items.map((item) => (
+                            <View key={item.id} style={styles.itemRow}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.itemName}>
+                                  💊 {item.medicine_name} x {item.quantity} {item.unit}
+                                </Text>
+                                <Text style={styles.itemDosage}>Liều dùng: {item.dosage}</Text>
+                              </View>
+                              <Text style={styles.itemPrice}>
+                                {(Number(item.unit_price) * item.quantity).toLocaleString('vi-VN')} đ
+                              </Text>
+                            </View>
+                          ))}
+
+                          <View style={styles.totalRow}>
+                            <Text style={styles.totalLabel}>Tổng tiền thuốc:</Text>
+                            <Text style={styles.totalValue}>
+                              {detail.items.reduce((sum, i) => sum + Number(i.unit_price) * i.quantity, 0).toLocaleString('vi-VN')} đ
+                            </Text>
+                          </View>
+
+                          {canBuy ? (
+                            <TouchableOpacity
+                              style={styles.buyButton}
+                              onPress={() => buyMedicine(prescription.id)}
+                              disabled={orderingId === prescription.id}
+                              activeOpacity={0.8}
+                            >
+                              {orderingId === prescription.id ? (
+                                <ActivityIndicator color="#fff" />
+                              ) : (
+                                <Text style={styles.buyButtonText}>
+                                  🛒 Giữ chỗ mua thuốc (thanh toán tại quầy)
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          ) : (
+                            <View style={styles.alreadyOrderedBox}>
+                              <Text style={styles.alreadyOrdered}>✓ Đã đặt giữ chỗ thành công — Vui lòng thanh toán và nhận thuốc tại quầy</Text>
+                            </View>
+                          )}
+                        </>
                       )}
-                    </>
+                    </View>
                   )}
                 </View>
-              )}
-            </View>
-          );
-        })}
+              );
+            })}
+          </View>
+        )}
+        <View style={{ height: 32 }} />
       </ScrollView>
     </ResponsiveContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  header: { padding: 20, paddingBottom: 12 },
-  eyebrow: { color: COLORS.primary, fontSize: 12, fontWeight: '700', letterSpacing: 1 },
-  title: { color: COLORS.text, fontSize: 26, fontWeight: '800', marginTop: 5 },
-  subtitle: { color: COLORS.textSecondary, marginTop: 6 },
-  petRow: { marginBottom: 10 },
-  petChip: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16 },
-  petChipSelected: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  petChipText: { color: COLORS.textSecondary, fontWeight: '600' },
-  petChipTextSelected: { color: '#fff', fontWeight: '700' },
-  loader: { marginTop: 30 },
-  empty: { color: COLORS.textSecondary, textAlign: 'center', padding: 30 },
-  card: { backgroundColor: COLORS.surface, borderRadius: 14, padding: 16, marginHorizontal: 16, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between' },
-  recordTitle: { color: COLORS.text, fontWeight: '800', fontSize: 16, flexShrink: 1 },
-  date: { color: COLORS.textSecondary, fontSize: 12 },
-  doctor: { color: COLORS.textSecondary, marginTop: 6 },
-  orderStatus: { color: COLORS.primaryDark, marginTop: 6, fontWeight: '700' },
-  detailBox: { marginTop: 12, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 12 },
-  itemRow: { marginBottom: 8 },
-  itemName: { color: COLORS.text, fontWeight: '700' },
-  itemDosage: { color: COLORS.textSecondary, fontSize: 13 },
-  total: { color: COLORS.text, fontWeight: '800', marginTop: 8, marginBottom: 12 },
-  buyButton: { backgroundColor: COLORS.primary, borderRadius: 10, padding: 13, alignItems: 'center' },
-  buyButtonText: { color: '#fff', fontWeight: '800' },
-  alreadyOrdered: { color: COLORS.success, fontWeight: '700' },
+  container: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 24,
+  },
+  header: {
+    marginBottom: 16,
+    marginTop: 4,
+  },
+  title: {
+    color: COLORS.text,
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  subtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  petRow: {
+    marginBottom: 16,
+  },
+  petRowContent: {
+    gap: 8,
+  },
+  petChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: COLORS.surface,
+  },
+  petChipSelected: {
+    backgroundColor: COLORS.primaryLight,
+    borderColor: COLORS.primary,
+  },
+  petIcon: {
+    fontSize: 16,
+  },
+  petChipText: {
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  petChipTextSelected: {
+    color: COLORS.primaryDark,
+    fontWeight: '700',
+  },
+  centerBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  emptyCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 32,
+    marginTop: 12,
+  },
+  emptyIcon: {
+    fontSize: 44,
+    marginBottom: 10,
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    maxWidth: 320,
+    lineHeight: 18,
+  },
+  prescriptionGrid: {
+    flexDirection: 'column',
+    gap: 14,
+  },
+  prescriptionGridDesktop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.sm,
+  },
+  cardDesktop: {
+    width: '48.8%',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  recordTitle: {
+    color: COLORS.text,
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  dateBadge: {
+    backgroundColor: COLORS.surfaceSubtle,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  dateText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  doctor: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  orderStatusBadge: {
+    marginTop: 10,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  orderStatusText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  expandRow: {
+    marginTop: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  expandText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: COLORS.primaryDark,
+  },
+  detailBox: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 14,
+  },
+  itemsHeader: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.surfaceSubtle,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+  },
+  itemName: {
+    color: COLORS.text,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  itemDosage: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  itemPrice: {
+    color: COLORS.primaryDark,
+    fontWeight: 'bold',
+    fontSize: 13,
+    marginLeft: 10,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 14,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+  },
+  totalLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  totalValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.primaryDark,
+  },
+  buyButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    ...SHADOWS.sm,
+  },
+  buyButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  alreadyOrderedBox: {
+    backgroundColor: '#D1FAE5',
+    padding: 12,
+    borderRadius: 10,
+  },
+  alreadyOrdered: {
+    color: '#047857',
+    fontWeight: '600',
+    fontSize: 12,
+    textAlign: 'center',
+  },
 });

@@ -1,15 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Modal } from 'react-native';
-import { COLORS } from '../../constants/theme';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Modal,
+} from 'react-native';
+import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
+import { useResponsive } from '../../utils/responsive';
 import { getRoomsApi, getLiveRoomsOccupancyApi } from '../../api/roomApi';
 
 const LIVE_REFRESH_INTERVAL_MS = 30000;
 
 const STATUS_META = {
-  available: { color: COLORS.success, label: 'Trống chỗ' },
-  busy: { color: COLORS.warning, label: 'Đang tiếp nhận' },
-  full: { color: COLORS.danger, label: 'Kín lịch' },
+  available: { color: COLORS.success, bg: '#D1FAE5', textColor: '#047857', label: 'Trống chỗ' },
+  busy: { color: COLORS.warning, bg: '#FEF3C7', textColor: '#B45309', label: 'Đang tiếp nhận' },
+  full: { color: COLORS.danger, bg: '#FEE2E2', textColor: '#B91C1C', label: 'Kín lịch' },
 };
 
 // BR08: sinh hướng dẫn lối đi từ sảnh tiếp đón tới phòng dựa trên tầng & tọa độ
@@ -26,6 +35,7 @@ const getWayfindingSteps = (room) => {
 };
 
 export default function HospitalMapScreen({ navigation }) {
+  const { isTabletOrDesktop, isWideScreen } = useResponsive();
   const [rooms, setRooms] = useState([]);
   const [selectedFloor, setSelectedFloor] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -77,53 +87,59 @@ export default function HospitalMapScreen({ navigation }) {
 
   const handleBookingRedirect = () => {
     if (selectedRoom) {
-      navigation.navigate('Booking', { 
+      navigation.navigate('Booking', {
         selectedRoomId: selectedRoom.id,
-        selectedRoomName: selectedRoom.room_name 
+        selectedRoomName: selectedRoom.room_name,
       });
       setShowRoomDetail(false);
     }
   };
 
-  const filteredRooms = rooms.filter(room => room.floor === selectedFloor);
+  const filteredRooms = rooms.filter((room) => room.floor === selectedFloor);
 
   return (
     <ResponsiveContainer style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>🏥 Bản Đồ Bệnh Viện</Text>
-        <Text style={styles.subtitle}>Mật độ phòng khám theo thời gian thực</Text>
+        <View>
+          <Text style={styles.title}>Sơ Đồ Bệnh Viện 🏥</Text>
+          <Text style={styles.subtitle}>Mật độ và tình trạng tiếp nhận bệnh nhân theo thời gian thực</Text>
+        </View>
       </View>
 
-      {/* Segmented Switch: Floor selector */}
-      <View style={styles.segmentedSwitch}>
-        {[1, 2].map((floor) => (
-          <TouchableOpacity
-            key={floor}
-            style={[styles.segment, selectedFloor === floor && styles.segmentActive]}
-            onPress={() => setSelectedFloor(floor)}
-          >
-            <Text style={[styles.segmentText, selectedFloor === floor && styles.segmentTextActive]}>
-              Tầng {floor}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* Floor Selector & Legend Row */}
+      <View style={[styles.controlBar, isTabletOrDesktop && styles.controlBarDesktop]}>
+        <View style={styles.segmentedSwitch}>
+          {[1, 2].map((floor) => (
+            <TouchableOpacity
+              key={floor}
+              style={[styles.segment, selectedFloor === floor && styles.segmentActive]}
+              onPress={() => setSelectedFloor(floor)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.segmentText, selectedFloor === floor && styles.segmentTextActive]}>
+                🏢 Tầng {floor} {floor === 1 ? '(Sảnh & Khám Nội)' : '(Chuyên Khoa & Spa)'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      {/* Legend */}
-      <View style={styles.legendRow}>
-        {Object.entries(STATUS_META).map(([key, meta]) => (
-          <View key={key} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: meta.color }]} />
-            <Text style={styles.legendText}>{meta.label}</Text>
-          </View>
-        ))}
+        {/* Legend */}
+        <View style={styles.legendRow}>
+          {Object.entries(STATUS_META).map(([key, meta]) => (
+            <View key={key} style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: meta.color }]} />
+              <Text style={styles.legendText}>{meta.label}</Text>
+            </View>
+          ))}
+        </View>
       </View>
 
       {/* Room Grid */}
       {loading ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Đang tải danh sách phòng...</Text>
+          <Text style={styles.loadingText}>Đang cập nhật mật độ phòng khám thời gian thực...</Text>
         </View>
       ) : error ? (
         <View style={styles.centerContainer}>
@@ -134,116 +150,157 @@ export default function HospitalMapScreen({ navigation }) {
         </View>
       ) : filteredRooms.length === 0 ? (
         <View style={styles.centerContainer}>
-          <Text style={styles.emptyText}>Không có phòng khám tầng này</Text>
+          <Text style={styles.emptyText}>Không tìm thấy phòng khám nào ở tầng này</Text>
         </View>
       ) : (
         <ScrollView showsVerticalScrollIndicator={false}>
-          <View style={styles.roomGrid}>
+          <View style={[styles.roomGrid, isWideScreen && styles.roomGridWide, isTabletOrDesktop && !isWideScreen && styles.roomGridTablet]}>
             {filteredRooms.map((room) => {
               const meta = STATUS_META[room.status_indicator] || STATUS_META.available;
+              const currentBookings = room.current_bookings ?? 0;
+              const maxSlots = room.max_slot_per_hour || 1;
+              const occupancyRatio = Math.min(currentBookings / maxSlots, 1);
+
               return (
                 <TouchableOpacity
                   key={room.id}
-                  style={[styles.roomCard, { borderLeftColor: meta.color }]}
+                  style={[
+                    styles.roomCard,
+                    isWideScreen && styles.roomCardWide,
+                    isTabletOrDesktop && !isWideScreen && styles.roomCardTablet,
+                    { borderTopColor: meta.color },
+                  ]}
                   onPress={() => handleRoomPress(room)}
+                  activeOpacity={0.8}
                 >
                   <View style={styles.roomCardTopRow}>
                     <View style={styles.roomCodeBadge}>
                       <Text style={styles.roomCode}>{room.room_code}</Text>
                     </View>
-                    <View style={[styles.statusBadge, { backgroundColor: meta.color }]}>
-                      <Text style={styles.statusBadgeText}>{room.status_label || meta.label}</Text>
+                    <View style={[styles.statusBadge, { backgroundColor: meta.bg }]}>
+                      <Text style={[styles.statusBadgeText, { color: meta.textColor }]}>
+                        {room.status_label || meta.label}
+                      </Text>
                     </View>
                   </View>
+
                   <Text style={styles.roomName}>{room.room_name}</Text>
-                  <Text style={styles.roomInfo}>
-                    🩺 Đang khám: {room.current_bookings ?? 0}/{room.max_slot_per_hour} ca
-                  </Text>
-                  {room.services && room.services.length > 0 && (
-                    <Text style={styles.serviceCount}>
-                      ✅ {room.services.length} dịch vụ
+                  
+                  {room.description && (
+                    <Text style={styles.roomDescription} numberOfLines={2}>
+                      {room.description}
                     </Text>
                   )}
+
+                  {/* Occupancy Progress Bar */}
+                  <View style={styles.occupancyBarContainer}>
+                    <View style={styles.occupancyTextRow}>
+                      <Text style={styles.occupancyLabel}>Công suất giờ hiện tại:</Text>
+                      <Text style={[styles.occupancyValue, { color: meta.color }]}>
+                        {currentBookings}/{maxSlots} ca
+                      </Text>
+                    </View>
+                    <View style={styles.progressTrack}>
+                      <View style={[styles.progressBar, { width: `${occupancyRatio * 100}%`, backgroundColor: meta.color }]} />
+                    </View>
+                  </View>
+
+                  <View style={styles.roomCardFooter}>
+                    <Text style={styles.serviceCountText}>
+                      💊 {room.services?.length || 0} dịch vụ chuyên khoa
+                    </Text>
+                    <Text style={styles.detailLinkText}>Xem chi tiết ➔</Text>
+                  </View>
                 </TouchableOpacity>
               );
             })}
           </View>
+          <View style={{ height: 32 }} />
         </ScrollView>
       )}
 
       {/* Room Detail Modal */}
       <Modal
-        visible={showRoomDetail}
+        visible={showRoomDetail && !!selectedRoom}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setShowRoomDetail(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, isTabletOrDesktop && styles.modalContentDesktop]}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setShowRoomDetail(false)}>
+              <View>
+                <Text style={styles.modalTitle}>Chi tiết phòng khám 🏥</Text>
+                <Text style={styles.modalSubtitle}>Thông tin chuyên khoa & hướng dẫn lối đi</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowRoomDetail(false)} style={styles.modalCloseBtn}>
                 <Text style={styles.closeButton}>✕</Text>
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>Chi tiết phòng khám</Text>
-              <View style={{ width: 30 }} />
             </View>
 
             {selectedRoom && (
               <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBody}>
                 <View style={styles.roomDetailHeader}>
-                  <Text style={styles.roomDetailCode}>{selectedRoom.room_code}</Text>
-                  <Text style={styles.roomDetailName}>{selectedRoom.room_name}</Text>
+                  <View style={styles.roomDetailCodeBox}>
+                    <Text style={styles.roomDetailCode}>{selectedRoom.room_code}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.roomDetailName}>{selectedRoom.room_name}</Text>
+                    <Text style={styles.roomDetailFloor}>Vị trí: Tầng {selectedRoom.floor}</Text>
+                  </View>
                 </View>
 
                 {selectedRoom.description && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.sectionLabel}>📝 Mô tả:</Text>
+                    <Text style={styles.sectionLabel}>📝 Chức năng chuyên môn:</Text>
                     <Text style={styles.sectionContent}>{selectedRoom.description}</Text>
                   </View>
                 )}
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.sectionLabel}>📊 Thông tin:</Text>
+                  <Text style={styles.sectionLabel}>📊 Năng lực & Công suất tiếp nhận:</Text>
                   <Text style={styles.sectionContent}>
-                    • Tầng: {selectedRoom.floor}
+                    • Tối đa: {selectedRoom.max_slot_per_hour} ca khám / mỗi khung giờ
                   </Text>
                   <Text style={styles.sectionContent}>
-                    • Năng lực: {selectedRoom.max_slot_per_hour} ca/giờ
-                  </Text>
-                  <Text style={styles.sectionContent}>
-                    • Đang khám: {selectedRoom.current_bookings ?? 0}/{selectedRoom.max_slot_per_hour} ca ({selectedRoom.status_label || STATUS_META[selectedRoom.status_indicator]?.label})
+                    • Hiện tại: Đang có {selectedRoom.current_bookings ?? 0} ca hẹn ({selectedRoom.status_label || STATUS_META[selectedRoom.status_indicator]?.label})
                   </Text>
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.sectionLabel}>🧭 Chỉ dẫn lối đi:</Text>
+                  <Text style={styles.sectionLabel}>🧭 Chỉ dẫn lối đi trong viện:</Text>
                   {getWayfindingSteps(selectedRoom).map((step, idx) => (
-                    <Text key={idx} style={styles.sectionContent}>{step}</Text>
+                    <Text key={idx} style={styles.stepItemText}>{step}</Text>
                   ))}
                 </View>
 
                 {selectedRoom.services && selectedRoom.services.length > 0 && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.sectionLabel}>💊 Dịch vụ:</Text>
-                    {selectedRoom.services.map((service, idx) => (
-                      <View key={service.id} style={styles.serviceItem}>
-                        <Text style={styles.serviceName}>{service.service_name}</Text>
-                        <Text style={styles.serviceInfo}>
-                          💰 {(service.price || 0).toLocaleString('vi-VN')}đ • ⏱️ {service.duration_minutes}min
-                        </Text>
-                        {service.description && (
-                          <Text style={styles.serviceDesc}>{service.description}</Text>
-                        )}
-                      </View>
-                    ))}
+                    <Text style={styles.sectionLabel}>💊 Các dịch vụ thực hiện tại phòng ({selectedRoom.services.length}):</Text>
+                    <View style={styles.serviceItemContainer}>
+                      {selectedRoom.services.map((service) => (
+                        <View key={service.id} style={styles.serviceItem}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.serviceName}>{service.service_name}</Text>
+                            <Text style={styles.serviceInfo}>
+                              ⏱️ {service.duration_minutes} phút {service.description ? `• ${service.description}` : ''}
+                            </Text>
+                          </View>
+                          <Text style={styles.servicePrice}>
+                            {Number(service.price || 0).toLocaleString('vi-VN')} đ
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
                   </View>
                 )}
 
                 <TouchableOpacity
                   style={styles.bookingButton}
                   onPress={handleBookingRedirect}
+                  activeOpacity={0.8}
                 >
-                  <Text style={styles.bookingButtonText}>📅 Đặt Lịch Tại Phòng Này</Text>
+                  <Text style={styles.bookingButtonText}>📅 Đặt Lịch Tại Phòng Này Ngay</Text>
                 </TouchableOpacity>
               </ScrollView>
             )}
@@ -256,42 +313,54 @@ export default function HospitalMapScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
   header: {
-    paddingTop: 16,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
+    marginBottom: 16,
+    marginTop: 4,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: COLORS.primary,
+    color: COLORS.text,
   },
   subtitle: {
     fontSize: 13,
     color: COLORS.textSecondary,
     marginTop: 4,
   },
+
+  // Control Bar
+  controlBar: {
+    marginBottom: 18,
+    gap: 12,
+  },
+  controlBarDesktop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   segmentedSwitch: {
     flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    backgroundColor: COLORS.surface,
-    borderRadius: 10,
+    backgroundColor: COLORS.surfaceSubtle,
+    borderRadius: 14,
+    padding: 4,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: 4,
   },
   segment: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   segmentActive: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.surface,
+    ...SHADOWS.sm,
   },
   segmentText: {
     fontSize: 13,
@@ -299,15 +368,13 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   segmentTextActive: {
-    color: '#fff',
+    color: COLORS.primaryDark,
+    fontWeight: '700',
   },
   legendRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     gap: 16,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
   },
   legendItem: {
     flexDirection: 'row',
@@ -315,80 +382,138 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   legendText: {
     fontSize: 12,
     color: COLORS.textSecondary,
+    fontWeight: '500',
   },
+
+  // Room Grid
   roomGrid: {
+    flexDirection: 'column',
+    gap: 14,
+  },
+  roomGridTablet: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 8,
-    paddingBottom: 16,
-    gap: 12,
+    gap: 16,
+  },
+  roomGridWide: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
   },
   roomCard: {
-    width: '48%',
     backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 18,
+    padding: 18,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderLeftWidth: 5,
-    elevation: 2,
+    borderTopWidth: 4,
+    ...SHADOWS.sm,
+  },
+  roomCardTablet: {
+    width: '48.5%',
+  },
+  roomCardWide: {
+    width: '31.8%',
   },
   roomCardTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   roomCodeBadge: {
-    alignSelf: 'flex-start',
     backgroundColor: COLORS.primaryLight,
     paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
   },
   roomCode: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 'bold',
-    color: COLORS.primary,
+    color: COLORS.primaryDark,
   },
   statusBadge: {
-    paddingVertical: 3,
-    paddingHorizontal: 6,
-    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 20,
   },
   statusBadgeText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   roomName: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  roomInfo: {
+  roomDescription: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  occupancyBarContainer: {
+    backgroundColor: COLORS.surfaceSubtle,
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+  },
+  occupancyTextRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  occupancyLabel: {
     fontSize: 11,
     color: COLORS.textSecondary,
-    marginBottom: 4,
   },
-  serviceCount: {
-    fontSize: 11,
-    color: COLORS.success,
+  occupancyValue: {
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.border,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  roomCardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: COLORS.borderLight,
+    paddingTop: 10,
+    marginTop: 4,
+  },
+  serviceCountText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
     fontWeight: '500',
   },
+  detailLinkText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: COLORS.primaryDark,
+  },
+
+  // Loading & Error States
   centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    justifyContent: 'center',
+    paddingVertical: 48,
   },
   loadingText: {
     fontSize: 14,
@@ -405,7 +530,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: 8,
+    borderRadius: 10,
   },
   retryButtonText: {
     color: '#fff',
@@ -415,103 +540,152 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: COLORS.textSecondary,
-    textAlign: 'center',
   },
+
+  // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
   },
   modalContent: {
     backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '90%',
-    paddingTop: 12,
+    borderRadius: 24,
+    width: '100%',
+    maxWidth: 560,
+    maxHeight: '88%',
+    padding: 22,
+    ...SHADOWS.lg,
+  },
+  modalContentDesktop: {
+    maxWidth: 600,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-  },
-  closeButton: {
-    fontSize: 24,
-    color: COLORS.textSecondary,
-    padding: 8,
+    marginBottom: 12,
   },
   modalTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.text,
-  },
-  modalBody: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-  roomDetailHeader: {
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  roomDetailCode: {
-    fontSize: 12,
-    color: COLORS.primary,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  roomDetailName: {
     fontSize: 18,
     fontWeight: 'bold',
     color: COLORS.text,
   },
+  modalSubtitle: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButton: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontWeight: 'bold',
+  },
+  modalBody: {
+    paddingVertical: 6,
+  },
+  roomDetailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderLight,
+  },
+  roomDetailCodeBox: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roomDetailCode: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.primaryDark,
+  },
+  roomDetailName: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  roomDetailFloor: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
   detailSection: {
-    marginBottom: 16,
+    marginBottom: 14,
+    gap: 4,
   },
   sectionLabel: {
     fontSize: 13,
     fontWeight: 'bold',
-    color: COLORS.primary,
-    marginBottom: 8,
+    color: COLORS.primaryDark,
+    marginBottom: 4,
   },
   sectionContent: {
-    fontSize: 12,
+    fontSize: 13,
     color: COLORS.text,
-    lineHeight: 18,
+    lineHeight: 20,
+  },
+  stepItemText: {
+    fontSize: 13,
+    color: COLORS.text,
+    lineHeight: 22,
+    marginLeft: 4,
+  },
+  serviceItemContainer: {
+    gap: 8,
+    marginTop: 4,
   },
   serviceItem: {
-    backgroundColor: COLORS.background,
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.surfaceSubtle,
+    padding: 12,
+    borderRadius: 12,
   },
   serviceName: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: COLORS.text,
-    marginBottom: 4,
   },
   serviceInfo: {
     fontSize: 11,
     color: COLORS.textSecondary,
-    marginBottom: 4,
+    marginTop: 2,
   },
-  serviceDesc: {
-    fontSize: 11,
-    color: COLORS.text,
-    fontStyle: 'italic',
-    marginTop: 4,
+  servicePrice: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: COLORS.primaryDark,
+    marginLeft: 10,
   },
   bookingButton: {
     backgroundColor: COLORS.primary,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
-    marginVertical: 16,
+    marginTop: 18,
+    marginBottom: 8,
+    ...SHADOWS.sm,
   },
   bookingButtonText: {
     color: '#fff',

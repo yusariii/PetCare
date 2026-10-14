@@ -1,19 +1,33 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Modal, FlatList } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  ScrollView,
+  Modal,
+  FlatList,
+  TextInput,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { COLORS } from '../../constants/theme';
+import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
+import { useResponsive } from '../../utils/responsive';
 import { getRoomsApi, getRoomServicesApi, getRoomAvailabilityApi } from '../../api/roomApi';
 import { getMyPetsApi } from '../../api/petApi';
 import { createAppointmentApi } from '../../api/appointmentApi';
 
 export default function BookingScreen({ route, navigation }) {
+  const { isTabletOrDesktop } = useResponsive();
+
   // State
   const [rooms, setRooms] = useState([]);
   const [services, setServices] = useState([]);
   const [pets, setPets] = useState([]);
   const [availability, setAvailability] = useState([]);
-  
+
   // Selected values
   const [selectedRoom, setSelectedRoom] = useState(route?.params?.selectedRoomId || null);
   const [selectedServices, setSelectedServices] = useState([]);
@@ -47,8 +61,6 @@ export default function BookingScreen({ route, navigation }) {
     }
   }, [selectedRoom, selectedDate]);
 
-  // Refresh slot availability whenever the screen regains focus (e.g. coming
-  // back from the appointments list) so counts reflect the latest bookings.
   useFocusEffect(
     useCallback(() => {
       if (selectedRoom && selectedDate) {
@@ -126,7 +138,8 @@ export default function BookingScreen({ route, navigation }) {
       date.setDate(date.getDate() + i);
       days.push({
         date: date.toISOString().split('T')[0],
-        label: date.toLocaleDateString('vi-VN', { weekday: 'short', month: '2-digit', day: '2-digit' })
+        label: date.toLocaleDateString('vi-VN', { weekday: 'short', month: '2-digit', day: '2-digit' }),
+        fullLabel: date.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }),
       });
     }
     return days;
@@ -134,7 +147,7 @@ export default function BookingScreen({ route, navigation }) {
 
   const handleBooking = async () => {
     if (!selectedPet || !selectedRoom || selectedServices.length === 0 || !selectedDate || !selectedTime) {
-      Alert.alert('Thông báo', 'Vui lòng chọn đầy đủ thông tin');
+      Alert.alert('Thông báo', 'Vui lòng chọn đầy đủ thông tin: thú cưng, phòng khám, dịch vụ, ngày và giờ khám.');
       return;
     }
 
@@ -142,8 +155,6 @@ export default function BookingScreen({ route, navigation }) {
       setSubmitting(true);
       setBookingError('');
 
-      // Format appointment datetime
-      const [hours] = selectedTime.split(':');
       const appointmentDatetime = new Date(`${selectedDate}T${selectedTime}:00`).toISOString();
 
       const response = await createAppointmentApi({
@@ -156,8 +167,6 @@ export default function BookingScreen({ route, navigation }) {
       });
 
       if (response.data.success) {
-        // Reset the form and refresh availability immediately so the same
-        // slot can't be submitted twice while the success alert is showing.
         setSelectedServices([]);
         setSelectedTime(null);
         setSelectedDate(null);
@@ -176,12 +185,8 @@ export default function BookingScreen({ route, navigation }) {
         ]);
       }
     } catch (err) {
-      // Show the reason inline (next to the time picker) instead of only a
-      // dev-console 400 log, since a full slot is an expected, recoverable case.
       setBookingError(err.response?.data?.message || 'Không thể đặt lịch. Vui lòng thử lại.');
       setSelectedTime(null);
-      // The slot may have just filled up (or become invalid) - refresh so the
-      // picker reflects the current state instead of letting the user retry blindly.
       if (selectedRoom && selectedDate) {
         loadAvailability(selectedRoom, selectedDate);
       }
@@ -194,7 +199,7 @@ export default function BookingScreen({ route, navigation }) {
     return (
       <ResponsiveContainer style={styles.centerContainer}>
         <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Đang tải dữ liệu...</Text>
+        <Text style={styles.loadingText}>Đang tải danh sách phòng khám & dịch vụ...</Text>
       </ResponsiveContainer>
     );
   }
@@ -202,13 +207,18 @@ export default function BookingScreen({ route, navigation }) {
   const selectedRoomObj = rooms.find(r => r.id === selectedRoom);
   const selectedServiceObjs = services.filter(service => selectedServices.includes(service.id));
   const selectedPetObj = pets.find(p => p.id === selectedPet);
+  const totalPrice = selectedServiceObjs.reduce((total, service) => total + Number(service.price || 0), 0);
+  const isFormComplete = selectedPet && selectedRoom && selectedServices.length > 0 && selectedDate && selectedTime;
 
   return (
     <ResponsiveContainer style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
+        {/* Header Banner */}
         <View style={styles.header}>
-          <Text style={styles.title}>📅 Đặt Lịch Khám</Text>
-          <Text style={styles.subtitle}>Chọn phòng khám, dịch vụ và thời gian</Text>
+          <View>
+            <Text style={styles.title}>Đặt Lịch Khám Bệnh 📅</Text>
+            <Text style={styles.subtitle}>Chọn chuyên khoa, dịch vụ và khung giờ khám phù hợp cho bé cưng</Text>
+          </View>
         </View>
 
         {error ? (
@@ -217,184 +227,302 @@ export default function BookingScreen({ route, navigation }) {
           </View>
         ) : null}
 
-        {/* Thú cưng */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>🐾 Thú cưng *</Text>
-          <TouchableOpacity
-            style={styles.pickerButton}
-            onPress={() => setShowPetPicker(true)}
-          >
-            <Text style={styles.pickerButtonText}>
-              {selectedPetObj ? `${selectedPetObj.name} (${selectedPetObj.species})` : 'Chọn thú cưng'}
-            </Text>
-            <Text style={styles.pickerArrow}>▼</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Phòng khám */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>🏥 Phòng khám *</Text>
-          <TouchableOpacity
-            style={styles.pickerButton}
-            onPress={() => setShowRoomPicker(true)}
-          >
-            <Text style={styles.pickerButtonText}>
-              {selectedRoomObj ? `${selectedRoomObj.room_code} - ${selectedRoomObj.room_name}` : 'Chọn phòng khám'}
-            </Text>
-            <Text style={styles.pickerArrow}>▼</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Dịch vụ */}
-        {selectedRoom && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>💊 Dịch vụ *</Text>
-            {services.length === 0 ? (
-              <Text style={styles.noDataText}>Không có dịch vụ nào</Text>
-            ) : (
-              <View>
-                {services.map(service => (
-                  <TouchableOpacity
-                    key={service.id}
-                    style={[
-                      styles.serviceCard,
-                      selectedServices.includes(service.id) && styles.serviceCardActive
-                    ]}
-                    onPress={() => {
-                      setSelectedServices(current => current.includes(service.id)
-                        ? current.filter(id => id !== service.id)
-                        : [...current, service.id]);
-                    }}
-                  >
-                    <View style={styles.serviceInfo}>
-                      <Text style={styles.serviceName}>{service.service_name}</Text>
-                      <Text style={styles.serviceDetails}>
-                        ⏱️ {service.duration_minutes}min • 💰 {service.price.toLocaleString('vi-VN')}đ
+        {/* 2-Column Split on Desktop, 1-Column on Mobile */}
+        <View style={[styles.mainLayout, isTabletOrDesktop && styles.mainLayoutDesktop]}>
+          
+          {/* CỘT TRÁI: THÔNG TIN THÚ CƯNG, PHÒNG KHÁM, DỊCH VỤ, GHI CHÚ */}
+          <View style={[styles.leftColumn, isTabletOrDesktop && styles.leftColumnDesktop]}>
+            {/* 1. Chọn Thú cưng */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionTitleRow}>
+                <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>1</Text></View>
+                <Text style={styles.sectionLabel}>Bé cưng cần khám</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => setShowPetPicker(true)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.pickerButtonContent}>
+                  <Text style={styles.pickerIcon}>🐾</Text>
+                  <View>
+                    <Text style={styles.pickerButtonText}>
+                      {selectedPetObj ? selectedPetObj.name : 'Chọn bé cưng của bạn'}
+                    </Text>
+                    {selectedPetObj && (
+                      <Text style={styles.pickerSubText}>
+                        Loài: {selectedPetObj.species === 'dog' ? 'Chó' : 'Mèo'} • {selectedPetObj.breed || 'Chưa rõ giống'}
                       </Text>
-                    </View>
-                    {selectedServices.includes(service.id) && (
-                      <Text style={styles.checkmark}>✓</Text>
                     )}
-                  </TouchableOpacity>
-                ))}
-                {selectedServiceObjs.length > 0 && (
-                  <Text style={styles.selectedServicesText}>
-                    Đã chọn {selectedServiceObjs.length} dịch vụ • {selectedServiceObjs.reduce((total, service) => total + Number(service.price || 0), 0).toLocaleString('vi-VN')}đ
-                  </Text>
+                  </View>
+                </View>
+                <Text style={styles.pickerArrow}>▼</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 2. Chọn Phòng khám */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionTitleRow}>
+                <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>2</Text></View>
+                <Text style={styles.sectionLabel}>Chuyên khoa / Phòng khám</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => setShowRoomPicker(true)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.pickerButtonContent}>
+                  <Text style={styles.pickerIcon}>🏥</Text>
+                  <View>
+                    <Text style={styles.pickerButtonText}>
+                      {selectedRoomObj ? `${selectedRoomObj.room_code} - ${selectedRoomObj.room_name}` : 'Chọn phòng khám'}
+                    </Text>
+                    {selectedRoomObj && (
+                      <Text style={styles.pickerSubText}>
+                        Tầng {selectedRoomObj.floor} • Tối đa {selectedRoomObj.max_slot_per_hour} ca/giờ
+                      </Text>
+                    )}
+                  </View>
+                </View>
+                <Text style={styles.pickerArrow}>▼</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* 3. Dịch vụ theo phòng */}
+            {selectedRoom && (
+              <View style={styles.cardSection}>
+                <View style={styles.sectionTitleRow}>
+                  <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>3</Text></View>
+                  <Text style={styles.sectionLabel}>Dịch vụ y tế (Có thể chọn nhiều)</Text>
+                </View>
+                {services.length === 0 ? (
+                  <Text style={styles.noDataText}>Chuyên khoa này hiện chưa cập nhật dịch vụ.</Text>
+                ) : (
+                  <View style={styles.serviceList}>
+                    {services.map(service => {
+                      const isSelected = selectedServices.includes(service.id);
+                      return (
+                        <TouchableOpacity
+                          key={service.id}
+                          style={[styles.serviceCard, isSelected && styles.serviceCardActive]}
+                          onPress={() => {
+                            setSelectedServices(current =>
+                              current.includes(service.id)
+                                ? current.filter(id => id !== service.id)
+                                : [...current, service.id]
+                            );
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.serviceInfo}>
+                            <Text style={[styles.serviceName, isSelected && styles.serviceNameActive]}>
+                              {service.service_name}
+                            </Text>
+                            <Text style={styles.serviceDetails}>
+                              ⏱️ {service.duration_minutes} phút • 💰 {Number(service.price).toLocaleString('vi-VN')} đ
+                            </Text>
+                          </View>
+                          <View style={[styles.checkCircle, isSelected && styles.checkCircleActive]}>
+                            {isSelected && <Text style={styles.checkText}>✓</Text>}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 )}
               </View>
             )}
+
+            {/* 4. Ghi chú */}
+            <View style={styles.cardSection}>
+              <Text style={styles.sectionLabelWithoutStep}>📝 Ghi chú hoặc mô tả triệu chứng (tùy chọn)</Text>
+              <TextInput
+                style={styles.notesTextInput}
+                value={notes}
+                onChangeText={setNotes}
+                placeholder="Ví dụ: Bé bị nôn 2 lần từ sáng, bỏ ăn hạt, cần kiểm tra thêm tai..."
+                placeholderTextColor={COLORS.textMuted}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
           </View>
-        )}
 
-        {/* Ngày */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>📅 Ngày *</Text>
-          <TouchableOpacity
-            style={styles.pickerButton}
-            onPress={() => setShowDatePicker(true)}
-          >
-            <Text style={styles.pickerButtonText}>
-              {selectedDate ? new Date(selectedDate).toLocaleDateString('vi-VN') : 'Chọn ngày'}
-            </Text>
-            <Text style={styles.pickerArrow}>▼</Text>
-          </TouchableOpacity>
-        </View>
+          {/* CỘT PHẢI: CHỌN NGÀY, GIỜ & SUMMARY CARD */}
+          <View style={[styles.rightColumn, isTabletOrDesktop && styles.rightColumnDesktop]}>
+            {/* Chọn Ngày */}
+            <View style={styles.cardSection}>
+              <View style={styles.sectionTitleRow}>
+                <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>4</Text></View>
+                <Text style={styles.sectionLabel}>Ngày khám hẹn</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.pickerButton}
+                onPress={() => setShowDatePicker(true)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.pickerButtonContent}>
+                  <Text style={styles.pickerIcon}>📅</Text>
+                  <View>
+                    <Text style={styles.pickerButtonText}>
+                      {selectedDate
+                        ? new Date(selectedDate).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
+                        : 'Bấm để chọn ngày khám (14 ngày tới)'}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.pickerArrow}>▼</Text>
+              </TouchableOpacity>
+            </View>
 
-        {/* Giờ */}
-        {selectedDate && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>⏰ Giờ *</Text>
-            {availability.length === 0 ? (
-              <Text style={styles.noDataText}>Đang tải lịch trống...</Text>
-            ) : (
-              <View style={styles.timeGrid}>
-                {availability.map((slot, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    disabled={slot.isFull}
-                    style={[
-                      styles.timeSlot,
-                      slot.isFull && styles.timeSlotDisabled,
-                      selectedTime === slot.time && styles.timeSlotActive
-                    ]}
-                    onPress={() => {
-                      setSelectedTime(slot.time);
-                      setBookingError('');
-                    }}
-                  >
-                    <Text style={[
-                      styles.timeSlotText,
-                      selectedTime === slot.time && styles.timeSlotTextActive,
-                      slot.isFull && styles.timeSlotTextDisabled
-                    ]}>
-                      {slot.time}
-                    </Text>
-                    <Text style={[styles.timeSlotAvailable, slot.isFull && styles.timeSlotAvailableDisabled]}>
-                      {slot.available}/{slot.booked}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+            {/* Chọn Giờ */}
+            {selectedDate && (
+              <View style={styles.cardSection}>
+                <View style={styles.sectionTitleRow}>
+                  <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>5</Text></View>
+                  <Text style={styles.sectionLabel}>Khung giờ khám</Text>
+                </View>
+                {availability.length === 0 ? (
+                  <View style={styles.loadingSlots}>
+                    <ActivityIndicator size="small" color={COLORS.primary} />
+                    <Text style={styles.loadingSlotsText}>Đang kiểm tra slot trống trong ngày...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.timeGrid}>
+                    {availability.map((slot, idx) => {
+                      const isSelected = selectedTime === slot.time;
+                      return (
+                        <TouchableOpacity
+                          key={idx}
+                          disabled={slot.isFull}
+                          style={[
+                            styles.timeSlot,
+                            slot.isFull && styles.timeSlotDisabled,
+                            isSelected && styles.timeSlotActive,
+                          ]}
+                          onPress={() => {
+                            setSelectedTime(slot.time);
+                            setBookingError('');
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text
+                            style={[
+                              styles.timeSlotText,
+                              isSelected && styles.timeSlotTextActive,
+                              slot.isFull && styles.timeSlotTextDisabled,
+                            ]}
+                          >
+                            {slot.time}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.timeSlotAvailable,
+                              isSelected && styles.timeSlotAvailableActive,
+                              slot.isFull && styles.timeSlotAvailableDisabled,
+                            ]}
+                          >
+                            {slot.isFull ? 'Hết chỗ' : `Còn ${slot.available} slot`}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             )}
-          </View>
-        )}
 
-        {/* Ghi chú */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>📝 Ghi chú (tùy chọn)</Text>
-          <TouchableOpacity style={styles.notesInput}>
-            <Text style={{ color: COLORS.textSecondary }}>Nhập ghi chú cho bác sĩ...</Text>
-          </TouchableOpacity>
+            {bookingError ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>⚠️ {bookingError}</Text>
+              </View>
+            ) : null}
+
+            {/* SUMMARY CARD (Tóm Tắt Lịch Hẹn) */}
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryTitle}>📋 Tóm tắt lịch hẹn</Text>
+              
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Bé cưng:</Text>
+                <Text style={styles.summaryValue}>{selectedPetObj ? selectedPetObj.name : '—'}</Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Phòng khám:</Text>
+                <Text style={styles.summaryValue} numberOfLines={1}>{selectedRoomObj ? selectedRoomObj.room_name : '—'}</Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Dịch vụ ({selectedServiceObjs.length}):</Text>
+                <Text style={styles.summaryValue} numberOfLines={2}>
+                  {selectedServiceObjs.length > 0 ? selectedServiceObjs.map(s => s.service_name).join(', ') : '—'}
+                </Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Thời gian:</Text>
+                <Text style={[styles.summaryValue, selectedTime && { color: COLORS.primaryDark, fontWeight: 'bold' }]}>
+                  {selectedDate && selectedTime ? `${selectedTime} • ${selectedDate}` : '—'}
+                </Text>
+              </View>
+
+              <View style={styles.divider} />
+
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Tạm tính chi phí:</Text>
+                <Text style={styles.totalValue}>{totalPrice.toLocaleString('vi-VN')} đ</Text>
+              </View>
+
+              {/* Button Đặt Lịch */}
+              <TouchableOpacity
+                style={[styles.bookButton, (!isFormComplete || submitting) && styles.bookButtonDisabled]}
+                onPress={handleBooking}
+                disabled={submitting || !isFormComplete}
+                activeOpacity={0.8}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.bookButtonText}>✅ Xác Nhận Đặt Lịch</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
 
-        {bookingError ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>⚠️ {bookingError}</Text>
-          </View>
-        ) : null}
-
-        {/* Button đặt lịch */}
-        <TouchableOpacity
-          style={[styles.bookButton, !selectedPet && styles.bookButtonDisabled]}
-          onPress={handleBooking}
-          disabled={submitting || !selectedPet || !selectedRoom || selectedServices.length === 0 || !selectedDate || !selectedTime}
-        >
-          {submitting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.bookButtonText}>✅ Xác Nhận Đặt Lịch</Text>
-          )}
-        </TouchableOpacity>
-
-        <View style={{ height: 20 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
 
       {/* Pet Picker Modal */}
-      <Modal visible={showPetPicker} transparent animationType="slide">
+      <Modal visible={showPetPicker} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setShowPetPicker(false)}>
+              <Text style={styles.modalTitle}>Chọn bé cưng</Text>
+              <TouchableOpacity onPress={() => setShowPetPicker(false)} style={styles.modalCloseBtn}>
                 <Text style={styles.closeButton}>✕</Text>
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>Chọn thú cưng</Text>
-              <View style={{ width: 30 }} />
             </View>
             <FlatList
               data={pets}
               keyExtractor={p => p.id.toString()}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={styles.pickerItem}
+                  style={[styles.pickerItem, selectedPet === item.id && styles.pickerItemActive]}
                   onPress={() => {
                     setSelectedPet(item.id);
                     setShowPetPicker(false);
                   }}
                 >
-                  <Text style={styles.pickerItemText}>
-                    {item.name} ({item.species})
-                  </Text>
+                  <View>
+                    <Text style={[styles.pickerItemText, selectedPet === item.id && styles.pickerItemTextActive]}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.pickerItemSub}>
+                      Loài: {item.species === 'dog' ? 'Chó' : 'Mèo'} • {item.breed || 'Chưa rõ giống'}
+                    </Text>
+                  </View>
+                  {selectedPet === item.id && <Text style={styles.modalCheck}>✓</Text>}
                 </TouchableOpacity>
               )}
             />
@@ -403,31 +531,33 @@ export default function BookingScreen({ route, navigation }) {
       </Modal>
 
       {/* Room Picker Modal */}
-      <Modal visible={showRoomPicker} transparent animationType="slide">
+      <Modal visible={showRoomPicker} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setShowRoomPicker(false)}>
+              <Text style={styles.modalTitle}>Chọn phòng khám</Text>
+              <TouchableOpacity onPress={() => setShowRoomPicker(false)} style={styles.modalCloseBtn}>
                 <Text style={styles.closeButton}>✕</Text>
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>Chọn phòng khám</Text>
-              <View style={{ width: 30 }} />
             </View>
             <FlatList
               data={rooms}
               keyExtractor={r => r.id.toString()}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={styles.pickerItem}
+                  style={[styles.pickerItem, selectedRoom === item.id && styles.pickerItemActive]}
                   onPress={() => {
                     setSelectedRoom(item.id);
                     setShowRoomPicker(false);
                   }}
                 >
-                  <Text style={styles.pickerItemText}>
-                    {item.room_code} - {item.room_name}
-                  </Text>
-                  <Text style={styles.pickerItemSub}>Tầng {item.floor} • {item.max_slot_per_hour} ca/h</Text>
+                  <View>
+                    <Text style={[styles.pickerItemText, selectedRoom === item.id && styles.pickerItemTextActive]}>
+                      {item.room_code} - {item.room_name}
+                    </Text>
+                    <Text style={styles.pickerItemSub}>Tầng {item.floor} • Tối đa {item.max_slot_per_hour} ca/giờ</Text>
+                  </View>
+                  {selectedRoom === item.id && <Text style={styles.modalCheck}>✓</Text>}
                 </TouchableOpacity>
               )}
             />
@@ -436,29 +566,31 @@ export default function BookingScreen({ route, navigation }) {
       </Modal>
 
       {/* Date Picker Modal */}
-      <Modal visible={showDatePicker} transparent animationType="slide">
+      <Modal visible={showDatePicker} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+              <Text style={styles.modalTitle}>Chọn ngày khám (14 ngày tới)</Text>
+              <TouchableOpacity onPress={() => setShowDatePicker(false)} style={styles.modalCloseBtn}>
                 <Text style={styles.closeButton}>✕</Text>
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>Chọn ngày</Text>
-              <View style={{ width: 30 }} />
             </View>
             <FlatList
               data={generateNextDays()}
               keyExtractor={d => d.date}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={styles.pickerItem}
+                  style={[styles.pickerItem, selectedDate === item.date && styles.pickerItemActive]}
                   onPress={() => {
                     setSelectedDate(item.date);
                     setShowDatePicker(false);
                     setBookingError('');
                   }}
                 >
-                  <Text style={styles.pickerItemText}>{item.label}</Text>
+                  <Text style={[styles.pickerItemText, selectedDate === item.date && styles.pickerItemTextActive]}>
+                    {item.fullLabel}
+                  </Text>
+                  {selectedDate === item.date && <Text style={styles.modalCheck}>✓</Text>}
                 </TouchableOpacity>
               )}
             />
@@ -471,8 +603,9 @@ export default function BookingScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 24,
   },
   centerContainer: {
     flex: 1,
@@ -485,14 +618,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   header: {
-    paddingTop: 16,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
+    marginBottom: 20,
+    marginTop: 4,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: COLORS.primary,
+    color: COLORS.text,
   },
   subtitle: {
     fontSize: 13,
@@ -500,62 +632,132 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   errorBox: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-    backgroundColor: '#ffebee',
-    padding: 12,
-    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: '#FEE2E2',
+    padding: 14,
+    borderRadius: 12,
     borderLeftWidth: 4,
     borderLeftColor: COLORS.danger,
   },
   errorText: {
-    color: COLORS.danger,
+    color: '#B91C1C',
     fontSize: 13,
+    fontWeight: '500',
   },
-  section: {
-    paddingHorizontal: 16,
+
+  // Main Layout
+  mainLayout: {
+    flexDirection: 'column',
+    gap: 16,
+  },
+  mainLayoutDesktop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 24,
+  },
+  leftColumn: {
+    flex: 1,
+  },
+  leftColumnDesktop: {
+    flex: 1.35,
+  },
+  rightColumn: {
+    flex: 1,
+  },
+  rightColumnDesktop: {
+    flex: 1,
+  },
+
+  // Card Section
+  cardSection: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 18,
+    padding: 18,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.sm,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  stepBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepBadgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: COLORS.primaryDark,
   },
   sectionLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: 8,
   },
+  sectionLabelWithoutStep: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: 10,
+  },
+
+  // Picker Button
   pickerButton: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.surfaceSubtle,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    borderRadius: 8,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  pickerButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  pickerIcon: {
+    fontSize: 20,
+  },
   pickerButtonText: {
-    fontSize: 13,
+    fontSize: 14,
+    fontWeight: '600',
     color: COLORS.text,
+  },
+  pickerSubText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
   },
   pickerArrow: {
     fontSize: 12,
     color: COLORS.textSecondary,
+    marginLeft: 8,
   },
-  noDataText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    paddingVertical: 16,
+
+  // Services
+  serviceList: {
+    gap: 10,
   },
   serviceCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 10,
-    borderWidth: 2,
+    backgroundColor: COLORS.surfaceSubtle,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
   },
   serviceCardActive: {
@@ -566,88 +768,180 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   serviceName: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: COLORS.text,
+    marginBottom: 4,
   },
-  serviceDetails: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    marginTop: 4,
-  },
-  checkmark: {
-    fontSize: 18,
-    color: COLORS.primary,
+  serviceNameActive: {
+    color: COLORS.primaryDark,
     fontWeight: 'bold',
   },
-  selectedServicesText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.primary,
-    textAlign: 'right',
-    marginTop: 2,
+  serviceDetails: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
   },
+  checkCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 10,
+  },
+  checkCircleActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  checkText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  noDataText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 14,
+  },
+
+  // Notes
+  notesTextInput: {
+    backgroundColor: COLORS.surfaceSubtle,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 14,
+    fontSize: 13,
+    color: COLORS.text,
+    minHeight: 76,
+    textAlignVertical: 'top',
+  },
+
+  // Time slots
   timeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 10,
   },
   timeSlot: {
-    flex: 1,
-    minWidth: '30%',
-    backgroundColor: COLORS.surface,
-    paddingVertical: 12,
+    width: '31%',
+    backgroundColor: COLORS.surfaceSubtle,
+    paddingVertical: 10,
     paddingHorizontal: 8,
-    borderRadius: 8,
-    borderWidth: 2,
+    borderRadius: 12,
+    borderWidth: 1.5,
     borderColor: COLORS.border,
     alignItems: 'center',
   },
   timeSlotDisabled: {
-    opacity: 0.5,
-    backgroundColor: '#f5f5f5',
+    opacity: 0.45,
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
   },
   timeSlotActive: {
     borderColor: COLORS.primary,
     backgroundColor: COLORS.primaryLight,
   },
   timeSlotText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 'bold',
     color: COLORS.text,
   },
   timeSlotTextActive: {
-    color: COLORS.primary,
+    color: COLORS.primaryDark,
   },
   timeSlotTextDisabled: {
-    color: COLORS.textSecondary,
+    color: COLORS.textMuted,
   },
   timeSlotAvailable: {
     fontSize: 10,
     color: COLORS.textSecondary,
-    marginTop: 4,
+    marginTop: 3,
+    fontWeight: '500',
+  },
+  timeSlotAvailableActive: {
+    color: COLORS.primaryDark,
+    fontWeight: '600',
   },
   timeSlotAvailableDisabled: {
-    color: '#999',
+    color: COLORS.textMuted,
   },
-  notesInput: {
+  loadingSlots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    gap: 10,
+  },
+  loadingSlotsText: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+
+  // Summary Card
+  summaryCard: {
     backgroundColor: COLORS.surface,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+    borderRadius: 20,
+    padding: 20,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    minHeight: 80,
-    justifyContent: 'flex-start',
-    paddingTop: 12,
+    borderColor: '#CCFBF1',
+    backgroundColor: '#F0FDFA',
+    ...SHADOWS.md,
+  },
+  summaryTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.primaryDark,
+    marginBottom: 14,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    alignItems: 'flex-start',
+  },
+  summaryLabel: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    width: 110,
+  },
+  summaryValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.text,
+    flex: 1,
+    textAlign: 'right',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#CCFBF1',
+    marginVertical: 12,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  totalLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: COLORS.text,
+  },
+  totalValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: COLORS.primaryDark,
   },
   bookButton: {
-    marginHorizontal: 16,
-    marginTop: 16,
     backgroundColor: COLORS.primary,
     paddingVertical: 14,
-    borderRadius: 10,
+    borderRadius: 14,
     alignItems: 'center',
+    ...SHADOWS.sm,
   },
   bookButtonDisabled: {
     opacity: 0.5,
@@ -657,50 +951,80 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
   },
+
+  // Modals
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
   },
   modalContent: {
     backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 520,
     maxHeight: '80%',
-    paddingTop: 12,
+    padding: 20,
+    ...SHADOWS.lg,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-  },
-  closeButton: {
-    fontSize: 24,
-    color: COLORS.textSecondary,
+    marginBottom: 8,
   },
   modalTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: COLORS.text,
   },
+  modalCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButton: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontWeight: 'bold',
+  },
   pickerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: COLORS.borderLight,
+    borderRadius: 10,
+  },
+  pickerItemActive: {
+    backgroundColor: COLORS.primaryLight,
   },
   pickerItemText: {
     fontSize: 14,
     color: COLORS.text,
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  pickerItemTextActive: {
+    color: COLORS.primaryDark,
   },
   pickerItemSub: {
     fontSize: 12,
     color: COLORS.textSecondary,
-    marginTop: 4,
+    marginTop: 2,
   },
-});
+  modalCheck: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.primaryDark,
+  },
+});

@@ -11,9 +11,15 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { COLORS } from '../../constants/theme';
+import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
-import { listMedicinesApi, createMedicineApi, adjustMedicineStockApi, getMedicineMovementsApi } from '../../api/medicineApi';
+import { useResponsive } from '../../utils/responsive';
+import {
+  listMedicinesApi,
+  createMedicineApi,
+  adjustMedicineStockApi,
+  getMedicineMovementsApi,
+} from '../../api/medicineApi';
 
 const MOVEMENT_LABELS = {
   initial: 'Tồn ban đầu',
@@ -24,6 +30,7 @@ const MOVEMENT_LABELS = {
 };
 
 export default function AdminMedicinesScreen() {
+  const { isTabletOrDesktop } = useResponsive();
   const [medicines, setMedicines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -110,135 +117,545 @@ export default function AdminMedicinesScreen() {
 
   return (
     <ResponsiveContainer style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>QUẢN TRỊ</Text>
-        <Text style={styles.title}>Kho thuốc</Text>
-        <Text style={styles.subtitle}>Quản lý danh mục thuốc và tồn kho.</Text>
-      </View>
-
-      <TouchableOpacity style={styles.addButton} onPress={() => setCreateVisible(true)}>
-        <Text style={styles.addButtonText}>+ Thêm thuốc mới</Text>
-      </TouchableOpacity>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {loading ? <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} /> : medicines.map((medicine) => (
-          <View key={medicine.id} style={styles.card}>
-            <Text style={styles.name}>{medicine.name}</Text>
-            <Text style={styles.detail}>{Number(medicine.price).toLocaleString('vi-VN')}đ / {medicine.unit}</Text>
-            <Text style={styles.stock}>Tồn kho: {medicine.stock_quantity}</Text>
-            <View style={styles.stockRow}>
-              <TextInput
-                style={styles.stockInput}
-                placeholder="+/- số lượng"
-                keyboardType="numeric"
-                value={stockInputs[medicine.id] || ''}
-                onChangeText={(value) => setStockInputs({ ...stockInputs, [medicine.id]: value.replace(/[^0-9-]/g, '') })}
-              />
-              <TouchableOpacity style={styles.stockButton} onPress={() => submitStockAdjust(medicine.id)}>
-                <Text style={styles.stockButtonText}>Cập nhật</Text>
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              style={[styles.stockInput, styles.noteInput]}
-              placeholder="Ghi chú / lý do (không bắt buộc)"
-              value={noteInputs[medicine.id] || ''}
-              onChangeText={(value) => setNoteInputs({ ...noteInputs, [medicine.id]: value })}
-              maxLength={255}
-            />
-            <TouchableOpacity onPress={() => openHistory(medicine)}>
-              <Text style={styles.historyLink}>Xem lịch sử tồn kho</Text>
+        <View style={styles.header}>
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.eyebrow}>QUẢN TRỊ DƯỢC PHẨM</Text>
+            <Text style={styles.title}>Kho Thuốc Bệnh Viện 💊</Text>
+            <Text style={styles.subtitle}>
+              Quản lý danh mục dược phẩm, cập nhật giá bán, theo dõi và điều chỉnh xuất nhập tồn kho.
+            </Text>
+          </View>
+          <TouchableOpacity style={styles.addButton} onPress={() => setCreateVisible(true)}>
+            <Text style={styles.addButtonText}>+ Thêm thuốc mới</Text>
+          </TouchableOpacity>
+        </View>
+
+        {loading ? (
+          <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
+        ) : medicines.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>📦</Text>
+            <Text style={styles.empty}>Kho thuốc hiện đang trống.</Text>
+            <TouchableOpacity style={[styles.addButton, { marginTop: 12 }]} onPress={() => setCreateVisible(true)}>
+              <Text style={styles.addButtonText}>Thêm thuốc đầu tiên</Text>
             </TouchableOpacity>
           </View>
-        ))}
+        ) : (
+          <View style={[styles.medicineGrid, isTabletOrDesktop && styles.medicineGridDesktop]}>
+            {medicines.map((medicine) => {
+              const isLowStock = medicine.stock_quantity <= 10;
+
+              return (
+                <View key={medicine.id} style={[styles.card, isTabletOrDesktop && styles.cardDesktop]}>
+                  <View style={styles.cardHeader}>
+                    <View style={styles.medicineIconWrap}>
+                      <Text style={styles.medicineIcon}>💊</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.name} numberOfLines={1}>{medicine.name}</Text>
+                      <Text style={styles.priceText}>
+                        {Number(medicine.price).toLocaleString('vi-VN')}đ <Text style={styles.unitText}>/ {medicine.unit}</Text>
+                      </Text>
+                    </View>
+                    <View style={[styles.stockBadge, { backgroundColor: isLowStock ? '#FEF3C7' : '#DCFCE7' }]}>
+                      <Text style={[styles.stockBadgeText, { color: isLowStock ? '#D97706' : '#16A34A' }]}>
+                        {isLowStock ? 'Sắp hết: ' : 'Tồn: '}{medicine.stock_quantity} {medicine.unit}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {medicine.description ? (
+                    <Text style={styles.descriptionText} numberOfLines={2}>{medicine.description}</Text>
+                  ) : null}
+
+                  {/* Khu vực điều chỉnh tồn kho */}
+                  <View style={styles.adjustSection}>
+                    <Text style={styles.adjustSectionTitle}>Nhập / Điều chỉnh kho:</Text>
+                    <View style={styles.stockRow}>
+                      <TextInput
+                        style={styles.stockInput}
+                        placeholder="+/- số lượng (VD: 50 hoặc -5)"
+                        placeholderTextColor={COLORS.textTertiary || '#94A3B8'}
+                        keyboardType="numeric"
+                        value={stockInputs[medicine.id] || ''}
+                        onChangeText={(value) =>
+                          setStockInputs({ ...stockInputs, [medicine.id]: value.replace(/[^0-9-]/g, '') })
+                        }
+                      />
+                      <TouchableOpacity
+                        style={styles.stockButton}
+                        onPress={() => submitStockAdjust(medicine.id)}
+                      >
+                        <Text style={styles.stockButtonText}>Cập nhật</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <TextInput
+                      style={styles.noteInput}
+                      placeholder="Lý do điều chỉnh (nhập hàng, kiểm kê...)"
+                      placeholderTextColor={COLORS.textTertiary || '#94A3B8'}
+                      value={noteInputs[medicine.id] || ''}
+                      onChangeText={(value) => setNoteInputs({ ...noteInputs, [medicine.id]: value })}
+                      maxLength={255}
+                    />
+                  </View>
+
+                  <View style={styles.cardFooter}>
+                    <TouchableOpacity onPress={() => openHistory(medicine)}>
+                      <Text style={styles.historyLink}>📋 Xem lịch sử biến động kho →</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
 
-      <Modal visible={Boolean(historyFor)} transparent animationType="slide" onRequestClose={() => setHistoryFor(null)}>
-        <View style={styles.overlay}><View style={styles.modal}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Lịch sử: {historyFor?.name}</Text>
-            <TouchableOpacity onPress={() => setHistoryFor(null)}><Text style={styles.close}>X</Text></TouchableOpacity>
-          </View>
-          <ScrollView>
-            {historyLoading ? <ActivityIndicator color={COLORS.primary} /> : movements.length === 0 ? (
-              <Text style={styles.detail}>Chưa có biến động tồn kho.</Text>
-            ) : movements.map((m) => (
-              <View key={m.id} style={styles.movementRow}>
-                <View style={styles.movementTop}>
-                  <Text style={styles.movementType}>{MOVEMENT_LABELS[m.movement_type] || m.movement_type}</Text>
-                  <Text style={[styles.movementQty, { color: m.change_qty > 0 ? COLORS.success : COLORS.danger }]}>
-                    {m.change_qty > 0 ? '+' : ''}{m.change_qty} (còn {m.quantity_after})
-                  </Text>
-                </View>
-                <Text style={styles.detail}>
-                  {new Date(m.created_at).toLocaleString('vi-VN')} · {m.created_by_name || 'Hệ thống'}
-                </Text>
-                {m.note ? <Text style={styles.detail}>{m.note}</Text> : null}
+      {/* Modal Lịch sử biến động tồn kho */}
+      <Modal visible={Boolean(historyFor)} transparent animationType="fade" onRequestClose={() => setHistoryFor(null)}>
+        <View style={styles.overlay}>
+          <View style={[styles.modal, isTabletOrDesktop && styles.modalCentered]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Lịch sử biến động</Text>
+                <Text style={styles.modalSubtitle}>Thuốc: {historyFor?.name}</Text>
               </View>
-            ))}
-          </ScrollView>
-        </View></View>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setHistoryFor(null)}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalScroll}>
+              {historyLoading ? (
+                <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 24 }} />
+              ) : movements.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.empty}>Chưa có ghi nhận biến động tồn kho nào.</Text>
+                </View>
+              ) : (
+                movements.map((m) => (
+                  <View key={m.id} style={styles.movementRow}>
+                    <View style={styles.movementTop}>
+                      <View style={styles.movementTypeBadge}>
+                        <Text style={styles.movementType}>{MOVEMENT_LABELS[m.movement_type] || m.movement_type}</Text>
+                      </View>
+                      <Text style={[styles.movementQty, { color: m.change_qty > 0 ? COLORS.success : COLORS.danger }]}>
+                        {m.change_qty > 0 ? `+${m.change_qty}` : m.change_qty} (sau: {m.quantity_after})
+                      </Text>
+                    </View>
+                    <Text style={styles.movementMeta}>
+                      🕒 {new Date(m.created_at).toLocaleString('vi-VN')} · Thực hiện: {m.created_by_name || 'Hệ thống'}
+                    </Text>
+                    {m.note ? <Text style={styles.movementNote}>Ghi chú: {m.note}</Text> : null}
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
 
-      <Modal visible={createVisible} transparent animationType="slide" onRequestClose={() => setCreateVisible(false)}>
-        <View style={styles.overlay}><View style={styles.modal}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Thêm thuốc mới</Text>
-            <TouchableOpacity onPress={() => setCreateVisible(false)}><Text style={styles.close}>X</Text></TouchableOpacity>
+      {/* Modal Thêm thuốc mới */}
+      <Modal visible={createVisible} transparent animationType="fade" onRequestClose={() => setCreateVisible(false)}>
+        <View style={styles.overlay}>
+          <View style={[styles.modal, isTabletOrDesktop && styles.modalCentered]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Thêm dược phẩm mới</Text>
+                <Text style={styles.modalSubtitle}>Khai báo thuốc mới vào kho bệnh viện</Text>
+              </View>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setCreateVisible(false)}>
+                <Text style={styles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalScroll}>
+              <Field
+                label="Tên thuốc"
+                value={form.name}
+                onChangeText={(name) => setForm({ ...form, name })}
+                placeholder="VD: Amoxicillin 250mg"
+              />
+              <Field
+                label="Đơn vị tính (viên, chai, vỉ, ống...)"
+                value={form.unit}
+                onChangeText={(unit) => setForm({ ...form, unit })}
+                placeholder="VD: viên"
+              />
+              <Field
+                label="Giá bán lẻ (VNĐ)"
+                value={form.price}
+                onChangeText={(price) => setForm({ ...form, price: price.replace(/[^0-9]/g, '') })}
+                keyboardType="numeric"
+                placeholder="VD: 15000"
+              />
+              <Field
+                label="Số lượng tồn kho ban đầu"
+                value={form.stock_quantity}
+                onChangeText={(stock_quantity) =>
+                  setForm({ ...form, stock_quantity: stock_quantity.replace(/[^0-9]/g, '') })
+                }
+                keyboardType="numeric"
+                placeholder="VD: 100"
+              />
+              <Field
+                label="Mô tả công dụng & chỉ định"
+                value={form.description}
+                onChangeText={(description) => setForm({ ...form, description })}
+                placeholder="Công dụng, liều dùng tham khảo..."
+                multiline
+              />
+              <TouchableOpacity style={styles.saveButton} onPress={submitCreate} disabled={saving}>
+                <Text style={styles.saveText}>{saving ? 'Đang lưu...' : 'Thêm vào kho thuốc'}</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-          <ScrollView>
-            <Field label="Tên thuốc" value={form.name} onChangeText={(name) => setForm({ ...form, name })} />
-            <Field label="Đơn vị (viên, chai...)" value={form.unit} onChangeText={(unit) => setForm({ ...form, unit })} />
-            <Field label="Giá bán" value={form.price} onChangeText={(price) => setForm({ ...form, price: price.replace(/[^0-9]/g, '') })} keyboardType="numeric" />
-            <Field label="Tồn kho ban đầu" value={form.stock_quantity} onChangeText={(stock_quantity) => setForm({ ...form, stock_quantity: stock_quantity.replace(/[^0-9]/g, '') })} keyboardType="numeric" />
-            <Field label="Mô tả" value={form.description} onChangeText={(description) => setForm({ ...form, description })} multiline />
-            <TouchableOpacity style={styles.saveButton} onPress={submitCreate} disabled={saving}>
-              <Text style={styles.saveText}>{saving ? 'Đang lưu...' : 'Thêm thuốc'}</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View></View>
+        </View>
       </Modal>
     </ResponsiveContainer>
   );
 }
 
-function Field({ label, multiline, ...props }) {
-  return <View><Text style={styles.fieldLabel}>{label}</Text><TextInput {...props} multiline={multiline} style={[styles.input, multiline && styles.multiline]} /></View>;
+function Field({ label, multiline, placeholder, ...props }) {
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        {...props}
+        placeholder={placeholder}
+        placeholderTextColor={COLORS.textTertiary || '#94A3B8'}
+        multiline={multiline}
+        style={[styles.input, multiline && styles.multiline]}
+      />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  header: { padding: 20, paddingBottom: 12 },
-  eyebrow: { color: COLORS.primary, fontSize: 12, fontWeight: '700', letterSpacing: 1 },
-  title: { color: COLORS.text, fontSize: 26, fontWeight: '800', marginTop: 5 },
-  subtitle: { color: COLORS.textSecondary, marginTop: 6 },
-  addButton: { marginHorizontal: 16, marginBottom: 12, backgroundColor: COLORS.primary, padding: 13, borderRadius: 10, alignItems: 'center' },
-  addButtonText: { color: '#fff', fontWeight: '800' },
-  loader: { marginTop: 30 },
-  card: { backgroundColor: COLORS.surface, borderRadius: 14, padding: 16, marginHorizontal: 16, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
-  name: { color: COLORS.text, fontWeight: '800', fontSize: 16 },
-  detail: { color: COLORS.textSecondary, marginTop: 5 },
-  stock: { color: COLORS.primaryDark, fontWeight: '700', marginTop: 5 },
-  stockRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  stockInput: { flex: 1, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 10, color: COLORS.text },
-  stockButton: { backgroundColor: COLORS.primaryLight, borderRadius: 8, paddingHorizontal: 14, justifyContent: 'center' },
-  stockButtonText: { color: COLORS.primaryDark, fontWeight: '700' },
-  overlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.45)', justifyContent: 'flex-end' },
-  modal: { backgroundColor: COLORS.surface, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, maxHeight: '90%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  modalTitle: { color: COLORS.text, fontSize: 21, fontWeight: '800' },
-  close: { color: COLORS.textSecondary, fontWeight: '800', padding: 8 },
-  fieldLabel: { color: COLORS.text, fontWeight: '700', marginTop: 12, marginBottom: 6 },
-  input: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 9, padding: 11, color: COLORS.text, backgroundColor: COLORS.background },
-  multiline: { minHeight: 72, textAlignVertical: 'top' },
-  saveButton: { backgroundColor: COLORS.primary, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 20, marginBottom: 12 },
-  saveText: { color: '#fff', fontWeight: '800' },
-  noteInput: { marginTop: 8 },
-  historyLink: { color: COLORS.primary, fontWeight: '700', marginTop: 10 },
-  movementRow: { borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingVertical: 10 },
-  movementTop: { flexDirection: 'row', justifyContent: 'space-between' },
-  movementType: { color: COLORS.text, fontWeight: '700' },
-  movementQty: { fontWeight: '800' },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+  scrollContent: {
+    paddingBottom: 36,
+  },
+  header: {
+    paddingTop: 16,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  headerTitleWrap: {
+    flex: 1,
+    minWidth: 260,
+  },
+  eyebrow: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+  title: {
+    color: COLORS.text,
+    fontSize: 26,
+    fontWeight: '800',
+    marginTop: 4,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  addButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    ...SHADOWS.sm,
+  },
+  addButtonText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  loader: {
+    marginTop: 40,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 48,
+    paddingHorizontal: 24,
+  },
+  emptyIcon: {
+    fontSize: 40,
+    marginBottom: 12,
+  },
+  empty: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  medicineGrid: {
+    paddingHorizontal: 16,
+    gap: 14,
+  },
+  medicineGridDesktop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.sm,
+  },
+  cardDesktop: {
+    width: '48.8%',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 10,
+  },
+  medicineIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  medicineIcon: {
+    fontSize: 22,
+  },
+  name: {
+    color: COLORS.text,
+    fontWeight: '800',
+    fontSize: 16,
+  },
+  priceText: {
+    color: COLORS.primary,
+    fontWeight: '800',
+    fontSize: 15,
+    marginTop: 2,
+  },
+  unitText: {
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+    fontSize: 13,
+  },
+  stockBadge: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 20,
+  },
+  stockBadgeText: {
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  descriptionText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  adjustSection: {
+    backgroundColor: COLORS.background,
+    borderRadius: 12,
+    padding: 12,
+    gap: 8,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  adjustSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  stockRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  stockInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    fontSize: 13,
+    color: COLORS.text,
+    backgroundColor: COLORS.surface,
+  },
+  stockButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stockButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  noteInput: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    fontSize: 12,
+    color: COLORS.text,
+    backgroundColor: COLORS.surface,
+  },
+  cardFooter: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 10,
+  },
+  historyLink: {
+    color: COLORS.primary,
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modal: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxHeight: '90%',
+    ...SHADOWS.lg,
+  },
+  modalCentered: {
+    maxWidth: 600,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  modalTitle: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  modalSubtitle: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginTop: 3,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeBtnText: {
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  modalScroll: {
+    maxHeight: 520,
+  },
+  movementRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingVertical: 12,
+    gap: 4,
+  },
+  movementTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  movementTypeBadge: {
+    backgroundColor: COLORS.background,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  movementType: {
+    color: COLORS.text,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  movementQty: {
+    fontWeight: '800',
+    fontSize: 14,
+  },
+  movementMeta: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  movementNote: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  fieldLabel: {
+    color: COLORS.text,
+    fontWeight: '700',
+    fontSize: 13,
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    color: COLORS.text,
+    backgroundColor: COLORS.background,
+    fontSize: 14,
+  },
+  multiline: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  saveButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 14,
+    marginBottom: 10,
+  },
+  saveText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 15,
+  },
 });

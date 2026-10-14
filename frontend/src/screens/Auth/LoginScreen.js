@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS } from '../../constants/theme';
+import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { loginApi } from '../../api/authApi';
 
@@ -11,7 +11,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }) {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!email || !password) return Alert.alert('Thông báo', 'Vui lòng nhập đầy đủ thông tin');
+    if (!email || !password) return Alert.alert('Thông báo', 'Vui lòng nhập đầy đủ email và mật khẩu');
     try {
       setLoading(true);
       const res = await loginApi(email, password);
@@ -21,7 +21,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }) {
         onLoginSuccess();
       }
     } catch (err) {
-      Alert.alert('Lỗi', err.response?.data?.message || 'Đăng nhập thất bại');
+      Alert.alert('Đăng nhập thất bại', err.response?.data?.message || 'Vui lòng kiểm tra lại tài khoản');
     } finally {
       setLoading(false);
     }
@@ -29,72 +29,157 @@ export default function LoginScreen({ navigation, onLoginSuccess }) {
 
   return (
     <ResponsiveContainer style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.title}>🐾 PetCare AI</Text>
-        <Text style={styles.subtitle}>Chăm sóc thú cưng thông minh & dễ dàng</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.card}>
+          <View style={styles.brandBadge}>
+            <Text style={styles.brandIcon}>🐾</Text>
+          </View>
+          <Text style={styles.title}>PetCare Hospital</Text>
+          <Text style={styles.subtitle}>Hệ thống chăm sóc thú cưng & đặt lịch khám thông minh</Text>
 
-        <TextInput
-          placeholder="Email của bạn"
-          value={email}
-          onChangeText={setEmail}
-          style={styles.input}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <TextInput
-          placeholder="Mật khẩu"
-          value={password}
-          onChangeText={setPassword}
-          style={styles.input}
-          secureTextEntry
-        />
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Email đăng nhập</Text>
+            <TextInput
+              placeholder="name@example.com"
+              placeholderTextColor={COLORS.textMuted}
+              value={email}
+              onChangeText={setEmail}
+              style={styles.input}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+          </View>
 
-        <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Đăng Nhập</Text>}
-        </TouchableOpacity>
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Mật khẩu</Text>
+            <TextInput
+              placeholder="Nhập mật khẩu"
+              placeholderTextColor={COLORS.textMuted}
+              value={password}
+              onChangeText={setPassword}
+              style={styles.input}
+              secureTextEntry
+            />
+          </View>
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Chưa có tài khoản? </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-            <Text style={styles.linkText}>Đăng ký ngay</Text>
+          <TouchableOpacity
+            style={[styles.button, loading && styles.btnDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+            activeOpacity={0.8}
+          >
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Đăng Nhập</Text>}
           </TouchableOpacity>
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Chưa có tài khoản? </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Register')} activeOpacity={0.7}>
+              <Text style={styles.linkText}>Đăng ký ngay</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </ResponsiveContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { justifyContent: 'center', padding: 20 },
+  container: {
+    justifyContent: 'center',
+    padding: 16,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
   card: {
     backgroundColor: COLORS.surface,
-    padding: 24,
-    borderRadius: 20,
-    elevation: 3,
-    shadowColor: COLORS.primary,
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-  },
-  title: { fontSize: 28, fontWeight: 'bold', color: COLORS.primary, textAlign: 'center' },
-  subtitle: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', marginBottom: 24, marginTop: 4 },
-  input: {
-    backgroundColor: COLORS.background,
+    padding: 32,
+    borderRadius: 24,
+    width: '100%',
+    maxWidth: 450,
     borderWidth: 1,
-    borderColor: COLORS.primaryLight,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    ...SHADOWS.lg,
+  },
+  brandBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  brandIcon: {
+    fontSize: 32,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  formGroup: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: COLORS.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: COLORS.border,
     borderRadius: 12,
-    padding: 14,
-    marginBottom: 14,
-    fontSize: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: COLORS.text,
   },
   button: {
+    width: '100%',
     backgroundColor: COLORS.primary,
-    padding: 15,
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 10,
+    ...SHADOWS.sm,
   },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
-  footerText: { color: COLORS.textSecondary, fontSize: 14 },
-  linkText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 14 },
+  btnDisabled: {
+    opacity: 0.7,
+  },
+  btnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 22,
+  },
+  footerText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+  },
+  linkText: {
+    color: COLORS.primaryDark,
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
 });
