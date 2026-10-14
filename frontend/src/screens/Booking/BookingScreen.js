@@ -12,6 +12,7 @@ import {
   TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
@@ -160,20 +161,13 @@ export default function BookingScreen({ route, navigation }) {
       const response = await createAppointmentApi({
         pet_id: selectedPet,
         room_id: selectedRoom,
-        service_id: selectedServices[0],
         service_ids: selectedServices,
         appointment_datetime: appointmentDatetime,
-        notes: notes || null
+        notes: notes ? notes.trim() : null,
       });
 
       if (response.data.success) {
-        setSelectedServices([]);
-        setSelectedTime(null);
-        setSelectedDate(null);
-        setNotes('');
-        setAvailability([]);
-
-        Alert.alert('Thành công', 'Đặt lịch thành công! Bác sĩ sẽ xác nhận lịch của bạn sớm.', [
+        Alert.alert('Thành công', 'Lịch hẹn đã được đặt thành công! Bạn có thể theo dõi tiến độ ở mục Lịch Hẹn.', [
           {
             text: 'Xem lịch hẹn',
             onPress: () => navigation.navigate('Appointments')
@@ -216,14 +210,15 @@ export default function BookingScreen({ route, navigation }) {
         {/* Header Banner */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.title}>Đặt Lịch Khám Bệnh 📅</Text>
+            <Text style={styles.title}>Đặt Lịch Khám Bệnh</Text>
             <Text style={styles.subtitle}>Chọn chuyên khoa, dịch vụ và khung giờ khám phù hợp cho bé cưng</Text>
           </View>
         </View>
 
         {error ? (
           <View style={styles.errorBox}>
-            <Text style={styles.errorText}>❌ {error}</Text>
+            <Ionicons name="alert-circle" size={16} color={COLORS.danger} style={{ marginRight: 6 }} />
+            <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : null}
 
@@ -244,8 +239,8 @@ export default function BookingScreen({ route, navigation }) {
                 activeOpacity={0.7}
               >
                 <View style={styles.pickerButtonContent}>
-                  <Text style={styles.pickerIcon}>🐾</Text>
-                  <View>
+                  <FontAwesome5 name="paw" size={18} color={COLORS.primary} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.pickerButtonText}>
                       {selectedPetObj ? selectedPetObj.name : 'Chọn bé cưng của bạn'}
                     </Text>
@@ -256,7 +251,7 @@ export default function BookingScreen({ route, navigation }) {
                     )}
                   </View>
                 </View>
-                <Text style={styles.pickerArrow}>▼</Text>
+                <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -272,8 +267,8 @@ export default function BookingScreen({ route, navigation }) {
                 activeOpacity={0.7}
               >
                 <View style={styles.pickerButtonContent}>
-                  <Text style={styles.pickerIcon}>🏥</Text>
-                  <View>
+                  <FontAwesome5 name="hospital" size={18} color={COLORS.primary} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.pickerButtonText}>
                       {selectedRoomObj ? `${selectedRoomObj.room_code} - ${selectedRoomObj.room_name}` : 'Chọn phòng khám'}
                     </Text>
@@ -284,7 +279,7 @@ export default function BookingScreen({ route, navigation }) {
                     )}
                   </View>
                 </View>
-                <Text style={styles.pickerArrow}>▼</Text>
+                <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -318,12 +313,18 @@ export default function BookingScreen({ route, navigation }) {
                             <Text style={[styles.serviceName, isSelected && styles.serviceNameActive]}>
                               {service.service_name}
                             </Text>
-                            <Text style={styles.serviceDetails}>
-                              ⏱️ {service.duration_minutes} phút • 💰 {Number(service.price).toLocaleString('vi-VN')} đ
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                              <Ionicons name="time-outline" size={13} color={COLORS.textSecondary} style={{ marginRight: 3 }} />
+                              <Text style={styles.serviceDetails}>{service.duration_minutes} phút</Text>
+                              <Text style={[styles.serviceDetails, { marginHorizontal: 6 }]}>•</Text>
+                              <Ionicons name="cash-outline" size={13} color={COLORS.primaryDark} style={{ marginRight: 3 }} />
+                              <Text style={[styles.serviceDetails, { fontWeight: '700', color: COLORS.primaryDark }]}>
+                                {Number(service.price).toLocaleString('vi-VN')} đ
+                              </Text>
+                            </View>
                           </View>
                           <View style={[styles.checkCircle, isSelected && styles.checkCircleActive]}>
-                            {isSelected && <Text style={styles.checkText}>✓</Text>}
+                            {isSelected && <Ionicons name="checkmark" size={13} color="#fff" />}
                           </View>
                         </TouchableOpacity>
                       );
@@ -335,7 +336,10 @@ export default function BookingScreen({ route, navigation }) {
 
             {/* 4. Ghi chú */}
             <View style={styles.cardSection}>
-              <Text style={styles.sectionLabelWithoutStep}>📝 Ghi chú hoặc mô tả triệu chứng (tùy chọn)</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                <Ionicons name="create-outline" size={16} color={COLORS.text} style={{ marginRight: 6 }} />
+                <Text style={styles.sectionLabelWithoutStep}>Ghi chú hoặc mô tả triệu chứng (tùy chọn)</Text>
+              </View>
               <TextInput
                 style={styles.notesTextInput}
                 value={notes}
@@ -362,8 +366,8 @@ export default function BookingScreen({ route, navigation }) {
                 activeOpacity={0.7}
               >
                 <View style={styles.pickerButtonContent}>
-                  <Text style={styles.pickerIcon}>📅</Text>
-                  <View>
+                  <Ionicons name="calendar-outline" size={18} color={COLORS.primary} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.pickerButtonText}>
                       {selectedDate
                         ? new Date(selectedDate).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -371,7 +375,7 @@ export default function BookingScreen({ route, navigation }) {
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.pickerArrow}>▼</Text>
+                <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -422,7 +426,7 @@ export default function BookingScreen({ route, navigation }) {
                               slot.isFull && styles.timeSlotAvailableDisabled,
                             ]}
                           >
-                            {slot.isFull ? 'Hết chỗ' : `Còn ${slot.available} slot`}
+                            {slot.isFull ? 'Hết chỗ' : `Còn ${slot.available} chỗ`}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -434,13 +438,17 @@ export default function BookingScreen({ route, navigation }) {
 
             {bookingError ? (
               <View style={styles.errorBox}>
-                <Text style={styles.errorText}>⚠️ {bookingError}</Text>
+                <Ionicons name="warning-outline" size={16} color={COLORS.warning} style={{ marginRight: 6 }} />
+                <Text style={styles.errorText}>{bookingError}</Text>
               </View>
             ) : null}
 
             {/* SUMMARY CARD (Tóm Tắt Lịch Hẹn) */}
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryTitle}>📋 Tóm tắt lịch hẹn</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+                <Ionicons name="clipboard-outline" size={18} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                <Text style={styles.summaryTitle}>Tóm tắt lịch hẹn</Text>
+              </View>
               
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Bé cưng:</Text>
@@ -483,7 +491,10 @@ export default function BookingScreen({ route, navigation }) {
                 {submitting ? (
                   <ActivityIndicator color="#fff" />
                 ) : (
-                  <Text style={styles.bookButtonText}>✅ Xác Nhận Đặt Lịch</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Ionicons name="checkmark-circle-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
+                    <Text style={styles.bookButtonText}>Xác Nhận Đặt Lịch</Text>
+                  </View>
                 )}
               </TouchableOpacity>
             </View>
@@ -500,7 +511,7 @@ export default function BookingScreen({ route, navigation }) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Chọn bé cưng</Text>
               <TouchableOpacity onPress={() => setShowPetPicker(false)} style={styles.modalCloseBtn}>
-                <Text style={styles.closeButton}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
             <FlatList
@@ -514,7 +525,7 @@ export default function BookingScreen({ route, navigation }) {
                     setShowPetPicker(false);
                   }}
                 >
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={[styles.pickerItemText, selectedPet === item.id && styles.pickerItemTextActive]}>
                       {item.name}
                     </Text>
@@ -522,7 +533,7 @@ export default function BookingScreen({ route, navigation }) {
                       Loài: {item.species === 'dog' ? 'Chó' : 'Mèo'} • {item.breed || 'Chưa rõ giống'}
                     </Text>
                   </View>
-                  {selectedPet === item.id && <Text style={styles.modalCheck}>✓</Text>}
+                  {selectedPet === item.id && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />}
                 </TouchableOpacity>
               )}
             />
@@ -537,7 +548,7 @@ export default function BookingScreen({ route, navigation }) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Chọn phòng khám</Text>
               <TouchableOpacity onPress={() => setShowRoomPicker(false)} style={styles.modalCloseBtn}>
-                <Text style={styles.closeButton}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
             <FlatList
@@ -551,13 +562,13 @@ export default function BookingScreen({ route, navigation }) {
                     setShowRoomPicker(false);
                   }}
                 >
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={[styles.pickerItemText, selectedRoom === item.id && styles.pickerItemTextActive]}>
                       {item.room_code} - {item.room_name}
                     </Text>
                     <Text style={styles.pickerItemSub}>Tầng {item.floor} • Tối đa {item.max_slot_per_hour} ca/giờ</Text>
                   </View>
-                  {selectedRoom === item.id && <Text style={styles.modalCheck}>✓</Text>}
+                  {selectedRoom === item.id && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />}
                 </TouchableOpacity>
               )}
             />
@@ -572,7 +583,7 @@ export default function BookingScreen({ route, navigation }) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Chọn ngày khám (14 ngày tới)</Text>
               <TouchableOpacity onPress={() => setShowDatePicker(false)} style={styles.modalCloseBtn}>
-                <Text style={styles.closeButton}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
             <FlatList
@@ -590,7 +601,7 @@ export default function BookingScreen({ route, navigation }) {
                   <Text style={[styles.pickerItemText, selectedDate === item.date && styles.pickerItemTextActive]}>
                     {item.fullLabel}
                   </Text>
-                  {selectedDate === item.date && <Text style={styles.modalCheck}>✓</Text>}
+                  {selectedDate === item.date && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />}
                 </TouchableOpacity>
               )}
             />
@@ -632,6 +643,8 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 16,
     backgroundColor: '#FEE2E2',
     padding: 14,
@@ -643,6 +656,7 @@ const styles = StyleSheet.create({
     color: '#B91C1C',
     fontSize: 13,
     fontWeight: '500',
+    flex: 1,
   },
 
   // Main Layout
@@ -706,7 +720,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: 10,
   },
 
   // Picker Button
@@ -724,11 +737,7 @@ const styles = StyleSheet.create({
   pickerButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
     flex: 1,
-  },
-  pickerIcon: {
-    fontSize: 20,
   },
   pickerButtonText: {
     fontSize: 14,
@@ -739,11 +748,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
-  },
-  pickerArrow: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    marginLeft: 8,
   },
 
   // Services
@@ -771,7 +775,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.text,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   serviceNameActive: {
     color: COLORS.primaryDark,
@@ -794,11 +798,6 @@ const styles = StyleSheet.create({
   checkCircleActive: {
     backgroundColor: COLORS.primary,
     borderColor: COLORS.primary,
-  },
-  checkText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
   },
   noDataText: {
     fontSize: 13,
@@ -883,19 +882,17 @@ const styles = StyleSheet.create({
 
   // Summary Card
   summaryCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: '#F0FDFA',
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
     borderColor: '#CCFBF1',
-    backgroundColor: '#F0FDFA',
     ...SHADOWS.md,
   },
   summaryTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: COLORS.primaryDark,
-    marginBottom: 14,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -941,6 +938,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
     ...SHADOWS.sm,
   },
   bookButtonDisabled: {
@@ -991,11 +989,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeButton: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: 'bold',
-  },
   pickerItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1022,9 +1015,4 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 2,
   },
-  modalCheck: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.primaryDark,
-  },
-});
+});

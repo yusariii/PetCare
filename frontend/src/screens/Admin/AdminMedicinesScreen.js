@@ -14,6 +14,7 @@ import {
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   listMedicinesApi,
   createMedicineApi,
@@ -125,13 +126,19 @@ export default function AdminMedicinesScreen() {
         <View style={styles.header}>
           <View style={styles.headerTitleWrap}>
             <Text style={styles.eyebrow}>QUẢN TRỊ DƯỢC PHẨM</Text>
-            <Text style={styles.title}>Kho Thuốc Bệnh Viện 💊</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              <Text style={styles.title}>Kho Thuốc Bệnh Viện</Text>
+              <MaterialCommunityIcons name="pill" size={24} color={COLORS.primary} />
+            </View>
             <Text style={styles.subtitle}>
               Quản lý danh mục dược phẩm, cập nhật giá bán, theo dõi và điều chỉnh xuất nhập tồn kho.
             </Text>
           </View>
           <TouchableOpacity style={styles.addButton} onPress={() => setCreateVisible(true)}>
-            <Text style={styles.addButtonText}>+ Thêm thuốc mới</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.addButtonText}>Thêm thuốc mới</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -139,10 +146,13 @@ export default function AdminMedicinesScreen() {
           <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
         ) : medicines.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📦</Text>
+            <Ionicons name="cube-outline" size={44} color={COLORS.textTertiary || '#94A3B8'} style={{ marginBottom: 12 }} />
             <Text style={styles.empty}>Kho thuốc hiện đang trống.</Text>
             <TouchableOpacity style={[styles.addButton, { marginTop: 12 }]} onPress={() => setCreateVisible(true)}>
-              <Text style={styles.addButtonText}>Thêm thuốc đầu tiên</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="add" size={18} color="#fff" />
+                <Text style={styles.addButtonText}>Thêm thuốc đầu tiên</Text>
+              </View>
             </TouchableOpacity>
           </View>
         ) : (
@@ -154,7 +164,7 @@ export default function AdminMedicinesScreen() {
                 <View key={medicine.id} style={[styles.card, isTabletOrDesktop && styles.cardDesktop]}>
                   <View style={styles.cardHeader}>
                     <View style={styles.medicineIconWrap}>
-                      <Text style={styles.medicineIcon}>💊</Text>
+                      <MaterialCommunityIcons name="pill" size={20} color={COLORS.primary} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.name} numberOfLines={1}>{medicine.name}</Text>
@@ -206,7 +216,10 @@ export default function AdminMedicinesScreen() {
 
                   <View style={styles.cardFooter}>
                     <TouchableOpacity onPress={() => openHistory(medicine)}>
-                      <Text style={styles.historyLink}>📋 Xem lịch sử biến động kho →</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Ionicons name="clipboard-outline" size={14} color={COLORS.primary} />
+                        <Text style={styles.historyLink}>Xem lịch sử biến động kho →</Text>
+                      </View>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -226,7 +239,7 @@ export default function AdminMedicinesScreen() {
                 <Text style={styles.modalSubtitle}>Thuốc: {historyFor?.name}</Text>
               </View>
               <TouchableOpacity style={styles.closeBtn} onPress={() => setHistoryFor(null)}>
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalScroll}>
@@ -247,9 +260,12 @@ export default function AdminMedicinesScreen() {
                         {m.change_qty > 0 ? `+${m.change_qty}` : m.change_qty} (sau: {m.quantity_after})
                       </Text>
                     </View>
-                    <Text style={styles.movementMeta}>
-                      🕒 {new Date(m.created_at).toLocaleString('vi-VN')} · Thực hiện: {m.created_by_name || 'Hệ thống'}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 }}>
+                      <Ionicons name="time-outline" size={13} color={COLORS.textSecondary} />
+                      <Text style={styles.movementMeta}>
+                        {new Date(m.created_at).toLocaleString('vi-VN')} · Thực hiện: {m.created_by_name || 'Hệ thống'}
+                      </Text>
+                    </View>
                     {m.note ? <Text style={styles.movementNote}>Ghi chú: {m.note}</Text> : null}
                   </View>
                 ))
@@ -269,7 +285,7 @@ export default function AdminMedicinesScreen() {
                 <Text style={styles.modalSubtitle}>Khai báo thuốc mới vào kho bệnh viện</Text>
               </View>
               <TouchableOpacity style={styles.closeBtn} onPress={() => setCreateVisible(false)}>
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalScroll}>

@@ -3,26 +3,27 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
-  RefreshControl,
+  Alert,
+  ScrollView,
   Modal,
   TextInput,
+  RefreshControl,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
 import {
   getMyAppointmentsApi,
-  cancelAppointmentApi,
   getAllAppointmentsApi,
   updateAppointmentStatusApi,
+  cancelAppointmentApi,
 } from '../../api/appointmentApi';
-import { createReviewApi } from '../../api/reviewApi';
 import { getRoomsApi } from '../../api/roomApi';
+import { createReviewApi } from '../../api/reviewApi';
 
 const STATUS_FILTERS = [
   ['all', 'Tất cả'],
@@ -32,18 +33,22 @@ const STATUS_FILTERS = [
   ['cancelled', 'Đã hủy'],
 ];
 
-export default function AppointmentsScreen() {
+export default function AppointmentsScreen({ navigation }) {
   const { isTabletOrDesktop } = useResponsive();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [userRole, setUserRole] = useState('customer');
-  const [roleReady, setRoleReady] = useState(false);
-  const [rooms, setRooms] = useState([]);
-  const [roomFilter, setRoomFilter] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('');
   const [error, setError] = useState('');
+  const [userRole, setUserRole] = useState('customer');
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Filters
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [roomFilter, setRoomFilter] = useState(null);
+  const [dateFilter, setDateFilter] = useState('');
+  const [rooms, setRooms] = useState([]);
+
+  // Detail Modal & Review
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
@@ -51,47 +56,52 @@ export default function AppointmentsScreen() {
   const [reviewComment, setReviewComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
 
-  const isAdmin = userRole === 'admin';
-
   useEffect(() => {
-    AsyncStorage.getItem('user')
-      .then((user) => {
-        if (user) setUserRole(JSON.parse(user).role || 'customer');
-      })
-      .catch((err) => console.error('Error loading user role:', err))
-      .finally(() => setRoleReady(true));
+    checkUserRoleAndLoad();
   }, []);
 
-  useEffect(() => {
-    if (isAdmin) {
-      getRoomsApi()
-        .then((res) => setRooms(res.data.success ? res.data.data || [] : []))
-        .catch(() => setRooms([]));
-    }
-  }, [isAdmin]);
+  const checkUserRoleAndLoad = async () => {
+    try {
+      const userStr = await AsyncStorage.getItem('user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        setUserRole(user.role || 'customer');
+        setIsAdmin(user.role === 'admin');
 
-  useEffect(() => {
-    if (!roleReady) return;
-    if (dateFilter && !/^\d{4}-\d{2}-\d{2}$/.test(dateFilter)) return;
-    loadAppointments();
-  }, [roleReady, userRole, roomFilter, statusFilter, dateFilter]);
+        if (user.role === 'admin') {
+          const roomsRes = await getRoomsApi();
+          if (roomsRes.data.success) {
+            setRooms(roomsRes.data.data || []);
+          }
+        }
+      }
+      await loadAppointments();
+    } catch (err) {
+      console.error('INIT_APPOINTMENTS_ERROR:', err);
+    }
+  };
 
   const loadAppointments = async () => {
     try {
       setLoading(true);
       setError('');
 
+      const userStr = await AsyncStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      const adminRole = user?.role === 'admin';
+      const doctorRole = user?.role === 'doctor';
+
       let response;
-      if (userRole === 'customer') {
-        response = await getMyAppointmentsApi();
-      } else {
+      if (adminRole) {
         const params = {};
-        if (isAdmin) {
-          if (roomFilter) params.room_id = roomFilter;
-          if (statusFilter !== 'all') params.status = statusFilter;
-          if (dateFilter) params.date = dateFilter;
-        }
+        if (statusFilter !== 'all') params.status = statusFilter;
+        if (roomFilter) params.room_id = roomFilter;
+        if (dateFilter) params.date = dateFilter;
         response = await getAllAppointmentsApi(params);
+      } else if (doctorRole) {
+        response = await getAllAppointmentsApi({ status: statusFilter !== 'all' ? statusFilter : undefined });
+      } else {
+        response = await getMyAppointmentsApi();
       }
 
       if (response.data.success) {
@@ -101,7 +111,7 @@ export default function AppointmentsScreen() {
       }
     } catch (err) {
       console.error('LOAD_APPOINTMENTS_ERROR:', err);
-      setError(err.response?.data?.message || 'Lỗi khi tải danh sách lịch hẹn');
+      setError(err.response?.data?.message || 'Lỗi khi tải lịch hẹn');
     } finally {
       setLoading(false);
     }
@@ -113,26 +123,30 @@ export default function AppointmentsScreen() {
     setRefreshing(false);
   };
 
-  const handleCancelAppointment = async (appointmentId) => {
+  const handleCancelAppointment = (appointmentId) => {
     Alert.alert(
-      'Xác nhận hủy lịch',
-      'Bạn chắc chắn muốn hủy lịch hẹn này?',
+      'Hủy lịch hẹn',
+      'Bạn có chắc chắn muốn hủy lịch hẹn này không?',
       [
-        { text: 'Không', onPress: () => {} },
+        { text: 'Không', style: 'cancel' },
         {
           text: 'Hủy lịch',
+          style: 'destructive',
           onPress: async () => {
             try {
+              setUpdatingId(appointmentId);
               const response = await cancelAppointmentApi(appointmentId);
               if (response.data.success) {
-                Alert.alert('Thành công', 'Hủy lịch hẹn thành công');
+                Alert.alert('Thành công', 'Đã hủy lịch hẹn');
                 await loadAppointments();
+                setShowDetail(false);
               }
             } catch (err) {
               Alert.alert('Lỗi', err.response?.data?.message || 'Không thể hủy lịch hẹn');
+            } finally {
+              setUpdatingId(null);
             }
           },
-          style: 'destructive',
         },
       ]
     );
@@ -195,7 +209,7 @@ export default function AppointmentsScreen() {
   return (
     <ResponsiveContainer style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Quản Lý Lịch Hẹn 📋</Text>
+        <Text style={styles.title}>Quản Lý Lịch Hẹn</Text>
         <Text style={styles.subtitle}>
           {isAdmin
             ? 'Toàn bộ lịch hẹn của viện (chế độ giám sát Admin)'
@@ -296,14 +310,17 @@ export default function AppointmentsScreen() {
         </View>
       ) : error ? (
         <View style={styles.centerContainer}>
-          <Text style={styles.errorText}>❌ {error}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+            <Ionicons name="alert-circle" size={18} color={COLORS.danger} style={{ marginRight: 6 }} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
           <TouchableOpacity style={styles.retryButton} onPress={loadAppointments}>
             <Text style={styles.retryButtonText}>Thử lại</Text>
           </TouchableOpacity>
         </View>
       ) : filteredAppointments.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>📅</Text>
+          <Ionicons name="calendar-outline" size={48} color={COLORS.textTertiary || '#94A3B8'} style={{ marginBottom: 12 }} />
           <Text style={styles.emptyTitle}>Chưa có lịch hẹn nào</Text>
           <Text style={styles.emptySubtitle}>Các lịch khám của bé cưng sẽ xuất hiện tại đây sau khi được đặt.</Text>
         </View>
@@ -334,7 +351,7 @@ export default function AppointmentsScreen() {
                   <View style={styles.cardHeader}>
                     <View style={styles.cardPetHeader}>
                       <View style={styles.petAvatarBadge}>
-                        <Text style={styles.petAvatarIcon}>🐾</Text>
+                        <FontAwesome5 name="paw" size={17} color={COLORS.primary} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.petName} numberOfLines={1}>{apt.pet_name}</Text>
@@ -350,29 +367,29 @@ export default function AppointmentsScreen() {
 
                   <View style={styles.cardBody}>
                     <View style={styles.infoRow}>
-                      <Text style={styles.infoIcon}>📅</Text>
+                      <Ionicons name="calendar-outline" size={14} color={COLORS.textSecondary} />
                       <Text style={styles.dateTimeText}>
                         {dateFormatted} lúc {timeFormatted}
                       </Text>
                     </View>
                     <View style={styles.infoRow}>
-                      <Text style={styles.infoIcon}>💊</Text>
+                      <MaterialCommunityIcons name="pill" size={14} color={COLORS.textSecondary} />
                       <Text style={styles.serviceText} numberOfLines={1}>{apt.service_name}</Text>
                     </View>
                     {apt.price && (
                       <View style={styles.infoRow}>
-                        <Text style={styles.infoIcon}>💰</Text>
+                        <Ionicons name="cash-outline" size={14} color={COLORS.primaryDark} />
                         <Text style={styles.priceText}>{Number(apt.price).toLocaleString('vi-VN')} đ</Text>
                       </View>
                     )}
                     {isAdmin && (
                       <>
                         <View style={styles.infoRow}>
-                          <Text style={styles.infoIcon}>👤</Text>
+                          <Ionicons name="person-outline" size={14} color={COLORS.textSecondary} />
                           <Text style={styles.adminInfoText} numberOfLines={1}>{apt.customer_info}</Text>
                         </View>
                         <View style={styles.infoRow}>
-                          <Text style={styles.infoIcon}>👨‍⚕️</Text>
+                          <FontAwesome5 name="user-md" size={13} color={COLORS.textSecondary} />
                           <Text style={styles.adminInfoText} numberOfLines={1}>
                             {apt.room_doctor_name || 'Chưa phân công bác sĩ'}
                           </Text>
@@ -391,7 +408,10 @@ export default function AppointmentsScreen() {
                       }}
                       activeOpacity={0.8}
                     >
-                      <Text style={styles.cancelButtonText}>✕ Hủy lịch hẹn</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Ionicons name="close-circle-outline" size={14} color="#B91C1C" style={{ marginRight: 4 }} />
+                        <Text style={styles.cancelButtonText}>Hủy lịch hẹn</Text>
+                      </View>
                     </TouchableOpacity>
                   )}
                 </TouchableOpacity>
@@ -412,35 +432,47 @@ export default function AppointmentsScreen() {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, isTabletOrDesktop && styles.modalContentDesktop]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chi tiết lịch hẹn 📋</Text>
+              <Text style={styles.modalTitle}>Chi tiết lịch hẹn</Text>
               <TouchableOpacity onPress={() => setShowDetail(false)} style={styles.modalCloseBtn}>
-                <Text style={styles.closeButton}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
 
             {selectedAppointment && (
               <ScrollView showsVerticalScrollIndicator={false} style={styles.modalBody}>
                 <View style={styles.detailSection}>
-                  <Text style={styles.sectionLabel}>🐾 Bé cưng:</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <FontAwesome5 name="paw" size={13} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                    <Text style={styles.sectionLabel}>Bé cưng:</Text>
+                  </View>
                   <Text style={styles.sectionValue}>
                     {selectedAppointment.pet_name} {selectedAppointment.species ? `(${selectedAppointment.species})` : ''}
                   </Text>
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.sectionLabel}>🏥 Chuyên khoa / Phòng:</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <FontAwesome5 name="hospital" size={13} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                    <Text style={styles.sectionLabel}>Chuyên khoa / Phòng:</Text>
+                  </View>
                   <Text style={styles.sectionValue}>
                     {selectedAppointment.room_code} - {selectedAppointment.room_name}
                   </Text>
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.sectionLabel}>💊 Dịch vụ đăng ký:</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <MaterialCommunityIcons name="pill" size={14} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                    <Text style={styles.sectionLabel}>Dịch vụ đăng ký:</Text>
+                  </View>
                   <Text style={styles.sectionValue}>{selectedAppointment.service_name}</Text>
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.sectionLabel}>📅 Thời gian khám:</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <Ionicons name="calendar-outline" size={14} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                    <Text style={styles.sectionLabel}>Thời gian khám:</Text>
+                  </View>
                   <Text style={styles.sectionValue}>
                     {new Date(selectedAppointment.appointment_datetime).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })} lúc {new Date(selectedAppointment.appointment_datetime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                   </Text>
@@ -448,7 +480,10 @@ export default function AppointmentsScreen() {
 
                 {selectedAppointment.price && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.sectionLabel}>💰 Chi phí dịch vụ:</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                      <Ionicons name="cash-outline" size={14} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                      <Text style={styles.sectionLabel}>Chi phí dịch vụ:</Text>
+                    </View>
                     <Text style={[styles.sectionValue, { fontWeight: 'bold', color: COLORS.primaryDark }]}>
                       {Number(selectedAppointment.price).toLocaleString('vi-VN')} đ
                     </Text>
@@ -458,19 +493,33 @@ export default function AppointmentsScreen() {
                 {isAdmin && (
                   <>
                     <View style={styles.detailSection}>
-                      <Text style={styles.sectionLabel}>👤 Khách hàng:</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                        <Ionicons name="person-outline" size={14} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                        <Text style={styles.sectionLabel}>Khách hàng:</Text>
+                      </View>
                       <Text style={styles.sectionValue}>{selectedAppointment.customer_info}</Text>
                     </View>
                     <View style={styles.detailSection}>
-                      <Text style={styles.sectionLabel}>👨‍⚕️ Bác sĩ phòng khám:</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                        <FontAwesome5 name="user-md" size={13} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                        <Text style={styles.sectionLabel}>Bác sĩ phòng khám:</Text>
+                      </View>
                       <Text style={styles.sectionValue}>{selectedAppointment.room_doctor_name || 'Chưa phân công'}</Text>
                     </View>
                     {selectedAppointment.review_rating ? (
                       <View style={styles.detailSection}>
-                        <Text style={styles.sectionLabel}>⭐ Đánh giá của khách:</Text>
-                        <Text style={styles.sectionValue}>
-                          {'⭐'.repeat(selectedAppointment.review_rating)}{selectedAppointment.review_comment ? ` — "${selectedAppointment.review_comment}"` : ''}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                          <Ionicons name="star" size={14} color="#F59E0B" style={{ marginRight: 6 }} />
+                          <Text style={styles.sectionLabel}>Đánh giá của khách:</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          {[...Array(selectedAppointment.review_rating)].map((_, i) => (
+                            <Ionicons key={i} name="star" size={14} color="#F59E0B" />
+                          ))}
+                          {selectedAppointment.review_comment ? (
+                            <Text style={[styles.sectionValue, { marginLeft: 6 }]}>"{selectedAppointment.review_comment}"</Text>
+                          ) : null}
+                        </View>
                       </View>
                     ) : null}
                   </>
@@ -478,7 +527,10 @@ export default function AppointmentsScreen() {
 
                 {selectedAppointment.notes && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.sectionLabel}>📝 Ghi chú ban đầu:</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                      <Ionicons name="create-outline" size={14} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                      <Text style={styles.sectionLabel}>Ghi chú ban đầu:</Text>
+                    </View>
                     <Text style={styles.sectionValue}>{selectedAppointment.notes}</Text>
                   </View>
                 )}
@@ -495,7 +547,10 @@ export default function AppointmentsScreen() {
                         {updatingId === selectedAppointment.id ? (
                           <ActivityIndicator color="#fff" />
                         ) : (
-                          <Text style={styles.actionButtonText}>✅ Xác Nhận Tiếp Nhận</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Ionicons name="checkmark-circle-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                            <Text style={styles.actionButtonText}>Xác Nhận Tiếp Nhận</Text>
+                          </View>
                         )}
                       </TouchableOpacity>
                     )}
@@ -509,7 +564,10 @@ export default function AppointmentsScreen() {
                         {updatingId === selectedAppointment.id ? (
                           <ActivityIndicator color="#fff" />
                         ) : (
-                          <Text style={styles.actionButtonText}>🎉 Hoàn Thành Ca Khám</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Ionicons name="checkmark-done-circle-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                            <Text style={styles.actionButtonText}>Hoàn Thành Ca Khám</Text>
+                          </View>
                         )}
                       </TouchableOpacity>
                     )}
@@ -523,7 +581,10 @@ export default function AppointmentsScreen() {
                         {updatingId === selectedAppointment.id ? (
                           <ActivityIndicator color="#fff" />
                         ) : (
-                          <Text style={styles.actionButtonText}>✕ Hủy Ca Khám</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Ionicons name="close-circle-outline" size={16} color="#B91C1C" style={{ marginRight: 6 }} />
+                            <Text style={[styles.actionButtonText, { color: '#B91C1C' }]}>Hủy Ca Khám</Text>
+                          </View>
                         )}
                       </TouchableOpacity>
                     )}
@@ -533,11 +594,18 @@ export default function AppointmentsScreen() {
                 {/* Customer Review Section */}
                 {userRole === 'customer' && selectedAppointment.status === 'completed' && (
                   <View style={styles.reviewBox}>
-                    <Text style={styles.reviewBoxTitle}>⭐ Đánh giá ca khám này:</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                      <Ionicons name="star" size={16} color="#F59E0B" style={{ marginRight: 6 }} />
+                      <Text style={styles.reviewBoxTitle}>Đánh giá ca khám này:</Text>
+                    </View>
                     <View style={styles.starRow}>
                       {[1, 2, 3, 4, 5].map((star) => (
-                        <TouchableOpacity key={star} onPress={() => setReviewRating(star)}>
-                          <Text style={styles.starIcon}>{star <= reviewRating ? '⭐' : '☆'}</Text>
+                        <TouchableOpacity key={star} onPress={() => setReviewRating(star)} style={{ padding: 4 }}>
+                          <Ionicons
+                            name={star <= reviewRating ? 'star' : 'star-outline'}
+                            size={26}
+                            color="#F59E0B"
+                          />
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -729,9 +797,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  petAvatarIcon: {
-    fontSize: 20,
-  },
   petName: {
     fontSize: 16,
     fontWeight: 'bold',
@@ -765,9 +830,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  infoIcon: {
-    fontSize: 14,
-  },
   dateTimeText: {
     fontSize: 13,
     fontWeight: '600',
@@ -793,6 +855,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 8,
   },
   cancelButtonText: {
@@ -813,10 +876,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   errorText: {
-    fontSize: 14,
     color: COLORS.danger,
-    textAlign: 'center',
-    marginBottom: 12,
+    fontSize: 14,
+    fontWeight: '500',
   },
   retryButton: {
     backgroundColor: COLORS.primary,
@@ -838,10 +900,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: 24,
-  },
-  emptyIcon: {
-    fontSize: 44,
-    marginBottom: 12,
   },
   emptyTitle: {
     fontSize: 17,
@@ -899,11 +957,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeButton: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: 'bold',
-  },
   modalBody: {
     paddingVertical: 6,
   },
@@ -917,7 +970,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: 'bold',
     color: COLORS.primaryDark,
-    marginBottom: 4,
   },
   sectionValue: {
     fontSize: 14,
@@ -931,6 +983,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   confirmButton: {
     backgroundColor: COLORS.primary,
@@ -958,15 +1011,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: 8,
   },
   starRow: {
     flexDirection: 'row',
     gap: 8,
     marginBottom: 12,
-  },
-  starIcon: {
-    fontSize: 26,
   },
   reviewInput: {
     backgroundColor: COLORS.surface,

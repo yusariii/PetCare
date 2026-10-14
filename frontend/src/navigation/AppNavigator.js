@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, View, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../constants/theme';
 import { useResponsive } from '../utils/responsive';
 
@@ -21,33 +22,53 @@ import AdminMedicineOrdersScreen from '../screens/Admin/AdminMedicineOrdersScree
 
 const Tab = createBottomTabNavigator();
 
-const ICONS = {
-    Home: '🏠',
-    DoctorDashboard: '🩺',
-    DoctorCompleted: '✅',
-    AdminDoctors: '👨‍⚕️',
-    Hospital: '🏥',
-    Booking: '📅',
-    AIChat: '🤖',
-    Appointments: '📋',
-    Pharmacy: '💊',
-    DoctorAnalytics: '📊',
-    KnowledgeBase: '📚',
-    AdminMedicines: '📦',
-    AdminMedicineOrders: '🧾',
-    Profile: '👤',
-};
+function renderTabIcon(routeName, isFocused, size = 18) {
+    const color = isFocused ? COLORS.primaryDark : COLORS.textSecondary;
+    switch (routeName) {
+        case 'Home':
+            return <Ionicons name={isFocused ? 'home' : 'home-outline'} size={size} color={color} />;
+        case 'DoctorDashboard':
+            return <FontAwesome5 name="stethoscope" size={size - 2} color={color} />;
+        case 'DoctorCompleted':
+            return <Ionicons name={isFocused ? 'checkmark-circle' : 'checkmark-circle-outline'} size={size} color={color} />;
+        case 'AdminDoctors':
+            return <FontAwesome5 name="user-md" size={size - 2} color={color} />;
+        case 'Hospital':
+            return <FontAwesome5 name="hospital" size={size - 2} color={color} />;
+        case 'Booking':
+            return <Ionicons name={isFocused ? 'calendar' : 'calendar-outline'} size={size} color={color} />;
+        case 'AIChat':
+            return <MaterialCommunityIcons name={isFocused ? 'robot' : 'robot-outline'} size={size + 2} color={color} />;
+        case 'Appointments':
+            return <Ionicons name={isFocused ? 'clipboard' : 'clipboard-outline'} size={size} color={color} />;
+        case 'Pharmacy':
+            return <MaterialCommunityIcons name="pill" size={size + 2} color={color} />;
+        case 'DoctorAnalytics':
+            return <Ionicons name={isFocused ? 'bar-chart' : 'bar-chart-outline'} size={size} color={color} />;
+        case 'KnowledgeBase':
+            return <Ionicons name={isFocused ? 'book' : 'book-outline'} size={size} color={color} />;
+        case 'AdminMedicines':
+            return <MaterialCommunityIcons name="package-variant-closed" size={size + 2} color={color} />;
+        case 'AdminMedicineOrders':
+            return <Ionicons name={isFocused ? 'receipt' : 'receipt-outline'} size={size} color={color} />;
+        case 'Profile':
+            return <Ionicons name={isFocused ? 'person' : 'person-outline'} size={size} color={color} />;
+        default:
+            return <Ionicons name="apps-outline" size={size} color={color} />;
+    }
+}
 
 const ROLE_BADGES = {
-    admin: { label: 'Quản trị viên', badgeBg: '#FEF3C7', textColor: '#B45309', icon: '🛡️' },
-    doctor: { label: 'Bác sĩ', badgeBg: '#E0F2FE', textColor: '#0369A1', icon: '🩺' },
-    pharmacist: { label: 'Dược sĩ', badgeBg: '#EDE9FE', textColor: '#6D28D9', icon: '💊' },
-    customer: { label: 'Khách hàng', badgeBg: '#E6FFFA', textColor: '#0F766E', icon: '🐾' },
+    admin: { label: 'Quản trị viên', badgeBg: '#FEF3C7', textColor: '#B45309', iconName: 'shield-checkmark', IconComp: Ionicons },
+    doctor: { label: 'Bác sĩ', badgeBg: '#E0F2FE', textColor: '#0369A1', iconName: 'stethoscope', IconComp: FontAwesome5 },
+    pharmacist: { label: 'Dược sĩ', badgeBg: '#EDE9FE', textColor: '#6D28D9', iconName: 'pill', IconComp: MaterialCommunityIcons },
+    customer: { label: 'Khách hàng', badgeBg: '#E6FFFA', textColor: '#0F766E', iconName: 'paw', IconComp: FontAwesome5 },
 };
 
 function CustomResponsiveTabBar({ state, descriptors, navigation, userRole, onLogout }) {
     const { isTabletOrDesktop } = useResponsive();
     const roleMeta = ROLE_BADGES[userRole] || ROLE_BADGES.customer;
+    const RoleIcon = roleMeta.IconComp;
 
     if (isTabletOrDesktop) {
         // DESKTOP: Sleek Top Navigation Header
@@ -57,7 +78,7 @@ function CustomResponsiveTabBar({ state, descriptors, navigation, userRole, onLo
                     {/* Brand */}
                     <View style={styles.desktopBrand}>
                         <View style={styles.brandBadge}>
-                            <Text style={styles.brandIcon}>🐾</Text>
+                            <FontAwesome5 name="paw" size={20} color={COLORS.primary} />
                         </View>
                         <View>
                             <Text style={styles.brandTitle}>PetCare Hospital</Text>
@@ -86,6 +107,7 @@ function CustomResponsiveTabBar({ state, descriptors, navigation, userRole, onLo
                                     type: 'tabPress',
                                     target: route.key,
                                     canPreventDefault: true,
+                                    defaultPrevented: false,
                                 });
 
                                 if (!isFocused && !event.defaultPrevented) {
@@ -103,9 +125,7 @@ function CustomResponsiveTabBar({ state, descriptors, navigation, userRole, onLo
                                     ]}
                                     activeOpacity={0.7}
                                 >
-                                    <Text style={[styles.desktopTabIcon, isFocused && styles.desktopTabIconActive]}>
-                                        {ICONS[route.name] || '🏠'}
-                                    </Text>
+                                    {renderTabIcon(route.name, isFocused, 17)}
                                     <Text
                                         style={[
                                             styles.desktopTabLabel,
@@ -123,8 +143,9 @@ function CustomResponsiveTabBar({ state, descriptors, navigation, userRole, onLo
                     {/* Right User & Logout Area */}
                     <View style={styles.desktopUserArea}>
                         <View style={[styles.roleChip, { backgroundColor: roleMeta.badgeBg }]}>
+                            <RoleIcon name={roleMeta.iconName} size={13} color={roleMeta.textColor} style={{ marginRight: 6 }} />
                             <Text style={[styles.roleChipText, { color: roleMeta.textColor }]}>
-                                {roleMeta.icon} {roleMeta.label}
+                                {roleMeta.label}
                             </Text>
                         </View>
                         {onLogout && (
@@ -133,7 +154,8 @@ function CustomResponsiveTabBar({ state, descriptors, navigation, userRole, onLo
                                 onPress={onLogout}
                                 activeOpacity={0.7}
                             >
-                                <Text style={styles.desktopLogoutText}>🚪 Thoát</Text>
+                                <Ionicons name="log-out-outline" size={15} color={COLORS.textSecondary} style={{ marginRight: 4 }} />
+                                <Text style={styles.desktopLogoutText}>Thoát</Text>
                             </TouchableOpacity>
                         )}
                     </View>
@@ -160,6 +182,7 @@ function CustomResponsiveTabBar({ state, descriptors, navigation, userRole, onLo
                         type: 'tabPress',
                         target: route.key,
                         canPreventDefault: true,
+                        defaultPrevented: false,
                     });
 
                     if (!isFocused && !event.defaultPrevented) {
@@ -175,9 +198,7 @@ function CustomResponsiveTabBar({ state, descriptors, navigation, userRole, onLo
                         activeOpacity={0.7}
                     >
                         <View style={[styles.mobileIconPill, isFocused && styles.mobileIconPillActive]}>
-                            <Text style={{ fontSize: isFocused ? 20 : 18 }}>
-                                {ICONS[route.name] || '🏠'}
-                            </Text>
+                            {renderTabIcon(route.name, isFocused, 20)}
                         </View>
                         <Text
                             style={[
@@ -297,9 +318,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    brandIcon: {
-        fontSize: 22,
-    },
     brandTitle: {
         fontSize: 17,
         fontWeight: 'bold',
@@ -328,12 +346,6 @@ const styles = StyleSheet.create({
     desktopTabButtonActive: {
         backgroundColor: COLORS.primaryLight,
     },
-    desktopTabIcon: {
-        fontSize: 16,
-    },
-    desktopTabIconActive: {
-        transform: [{ scale: 1.1 }],
-    },
     desktopTabLabel: {
         fontSize: 13,
         fontWeight: '600',
@@ -356,6 +368,8 @@ const styles = StyleSheet.create({
         gap: 12,
     },
     roleChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 20,
@@ -365,6 +379,8 @@ const styles = StyleSheet.create({
         fontWeight: '700',
     },
     desktopLogoutBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 8,
@@ -416,4 +432,4 @@ const styles = StyleSheet.create({
         color: COLORS.primary,
         fontWeight: '700',
     },
-});
+});

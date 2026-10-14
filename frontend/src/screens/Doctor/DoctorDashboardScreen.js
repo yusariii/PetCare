@@ -15,6 +15,7 @@ import {
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
+import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { getAllAppointmentsApi, updateAppointmentStatusApi } from '../../api/appointmentApi';
 import { createHealthRecordApi, getPetHealthRecordsApi } from '../../api/healthRecordApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -44,6 +45,19 @@ const STATUS_FILTERS = [
   ['completed', 'Hoàn thành'],
   ['cancelled', 'Đã hủy'],
 ];
+
+const renderRatingStars = (rating) => (
+  <View style={{ flexDirection: 'row', gap: 2 }}>
+    {[1, 2, 3, 4, 5].map((star) => (
+      <Ionicons
+        key={star}
+        name={star <= rating ? 'star' : 'star-outline'}
+        size={14}
+        color="#F59E0B"
+      />
+    ))}
+  </View>
+);
 
 export default function DoctorDashboardScreen({ route }) {
   const { isTabletOrDesktop, isDesktop } = useResponsive();
@@ -243,7 +257,10 @@ export default function DoctorDashboardScreen({ route }) {
       >
         <View style={styles.header}>
           <Text style={styles.eyebrow}>{completedOnly ? 'ĐÃ KHÁM XONG' : 'BẢNG ĐIỀU KHIỂN BÁC SĨ'}</Text>
-          <Text style={styles.title}>{completedOnly ? 'Ca khám đã hoàn thành' : 'Quản lý ca khám bệnh 🩺'}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <Text style={styles.title}>{completedOnly ? 'Ca khám đã hoàn thành' : 'Quản lý ca khám bệnh'}</Text>
+            {!completedOnly && <FontAwesome5 name="stethoscope" size={20} color={COLORS.primary} />}
+          </View>
           <Text style={styles.subtitle}>
             {completedOnly
               ? 'Chọn ca khám để lập hồ sơ bệnh án số và kê đơn thuốc cho khách hàng.'
@@ -253,14 +270,14 @@ export default function DoctorDashboardScreen({ route }) {
 
         {completedOnly ? (
           <View style={styles.statsRow}>
-            <Stat label="Tổng ca đã khám" value={appointments.length} color={COLORS.success} icon="✅" />
+            <Stat label="Tổng ca đã khám" value={appointments.length} color={COLORS.success} icon={<Ionicons name="checkmark-circle-outline" size={22} color={COLORS.success} />} />
           </View>
         ) : (
           <>
             <View style={styles.statsRow}>
-              <Stat label="Tổng ca khám" value={appointments.length} color={COLORS.primary} icon="📅" />
-              <Stat label="Chờ duyệt" value={counts.pending || 0} color={COLORS.warning} icon="⏳" />
-              <Stat label="Đã hoàn thành" value={counts.completed || 0} color={COLORS.success} icon="✨" />
+              <Stat label="Tổng ca khám" value={appointments.length} color={COLORS.primary} icon={<Ionicons name="calendar-outline" size={22} color={COLORS.primary} />} />
+              <Stat label="Chờ duyệt" value={counts.pending || 0} color={COLORS.warning} icon={<Ionicons name="hourglass-outline" size={22} color={COLORS.warning} />} />
+              <Stat label="Đã hoàn thành" value={counts.completed || 0} color={COLORS.success} icon={<Ionicons name="sparkles-outline" size={22} color={COLORS.success} />} />
             </View>
 
             <View style={styles.filterSection}>
@@ -300,7 +317,7 @@ export default function DoctorDashboardScreen({ route }) {
           <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
         ) : appointments.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📋</Text>
+            <Ionicons name="clipboard-outline" size={40} color={COLORS.textTertiary || '#94A3B8'} style={{ marginBottom: 12 }} />
             <Text style={styles.empty}>
               {completedOnly ? 'Chưa có ca khám nào hoàn thành.' : `Không có lịch khám phù hợp trong ngày ${selectedDate}.`}
             </Text>
@@ -333,9 +350,11 @@ export default function DoctorDashboardScreen({ route }) {
 
                   <View style={styles.petInfoRow}>
                     <View style={styles.petAvatar}>
-                      <Text style={styles.petAvatarText}>
-                        {appointment.species === 'cat' ? '🐱' : '🐶'}
-                      </Text>
+                      <FontAwesome5
+                        name={appointment.species === 'cat' ? 'cat' : 'dog'}
+                        size={18}
+                        color={COLORS.primaryDark}
+                      />
                     </View>
                     <View style={styles.petTextWrap}>
                       <Text style={styles.petName}>{appointment.pet_name}</Text>
@@ -344,18 +363,24 @@ export default function DoctorDashboardScreen({ route }) {
                   </View>
 
                   <View style={styles.detailsBox}>
-                    <Text style={styles.detailText} numberOfLines={1}>
-                      🏥 {appointment.service_name || 'Khám tổng quát'} · {appointment.room_name}
-                    </Text>
-                    <Text style={styles.ownerText} numberOfLines={1}>
-                      👤 Chủ nuôi: {appointment.customer_info}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <FontAwesome5 name="hospital" size={12} color={COLORS.primary} />
+                      <Text style={styles.detailText} numberOfLines={1}>
+                        {appointment.service_name || 'Khám tổng quát'} · {appointment.room_name}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="person-outline" size={13} color={COLORS.textSecondary} />
+                      <Text style={styles.ownerText} numberOfLines={1}>
+                        Chủ nuôi: {appointment.customer_info}
+                      </Text>
+                    </View>
                   </View>
 
                   {appointment.status === 'completed' && (
                     appointment.review_rating ? (
                       <View style={styles.reviewBox}>
-                        <Text style={styles.reviewStars}>{'⭐'.repeat(appointment.review_rating)}</Text>
+                        {renderRatingStars(appointment.review_rating)}
                         {appointment.review_comment ? (
                           <Text style={styles.reviewComment} numberOfLines={2}>"{appointment.review_comment}"</Text>
                         ) : null}
@@ -387,7 +412,7 @@ export default function DoctorDashboardScreen({ route }) {
                     <Text style={styles.modalSubtitle}>Bé: {selectedAppointment.pet_name} ({selectedAppointment.species})</Text>
                   </View>
                   <TouchableOpacity style={styles.closeBtn} onPress={() => setSelectedAppointment(null)}>
-                    <Text style={styles.closeBtnText}>✕</Text>
+                    <Ionicons name="close" size={18} color={COLORS.textSecondary} />
                   </TouchableOpacity>
                 </View>
 
@@ -400,27 +425,34 @@ export default function DoctorDashboardScreen({ route }) {
                     <InfoRow label="Thời gian" value={new Date(selectedAppointment.appointment_datetime).toLocaleString('vi-VN')} />
                     <InfoRow label="Ghi chú khách hàng" value={selectedAppointment.notes || 'Không có ghi chú'} />
                     {selectedAppointment.review_rating ? (
-                      <InfoRow
-                        label="Đánh giá"
-                        value={`${'⭐'.repeat(selectedAppointment.review_rating)} ${selectedAppointment.review_comment ? `("${selectedAppointment.review_comment}")` : ''}`}
-                      />
+                      <View style={styles.infoRow}>
+                        <Text style={styles.infoRowLabel}>Đánh giá</Text>
+                        <View style={{ flex: 1, alignItems: 'flex-end', gap: 4 }}>
+                          {renderRatingStars(selectedAppointment.review_rating)}
+                          {selectedAppointment.review_comment ? (
+                            <Text style={[styles.infoRowValue, { fontStyle: 'italic', fontSize: 12 }]}>
+                              "{selectedAppointment.review_comment}"
+                            </Text>
+                          ) : null}
+                        </View>
+                      </View>
                     ) : null}
                   </View>
 
                   <View style={styles.actions}>
                     {selectedAppointment.status === 'pending' && (
-                      <Action label="Xác nhận lịch khám" color={COLORS.primary} onPress={() => updateStatus('confirmed')} />
+                      <Action label="Xác nhận lịch khám" icon={<Ionicons name="checkmark-circle-outline" size={18} color="#fff" />} color={COLORS.primary} onPress={() => updateStatus('confirmed')} />
                     )}
                     {selectedAppointment.status === 'confirmed' && (
-                      <Action label="Hoàn thành khám bệnh" color={COLORS.success} onPress={() => updateStatus('completed')} />
+                      <Action label="Hoàn thành khám bệnh" icon={<Ionicons name="checkbox-outline" size={18} color="#fff" />} color={COLORS.success} onPress={() => updateStatus('completed')} />
                     )}
                     {(selectedAppointment.status === 'pending' || selectedAppointment.status === 'confirmed') && (
-                      <Action label="Hủy lịch hẹn" color={COLORS.danger} onPress={() => updateStatus('cancelled')} />
+                      <Action label="Hủy lịch hẹn" icon={<Ionicons name="close-circle-outline" size={18} color="#fff" />} color={COLORS.danger} onPress={() => updateStatus('cancelled')} />
                     )}
                     {selectedAppointment.status === 'completed' && (
                       <>
-                        <Action label="📋 Lập hồ sơ bệnh án" color={COLORS.primaryDark} onPress={openRecordForm} />
-                        <Action label="💊 Kê đơn thuốc điện tử" color={COLORS.primary} onPress={prescribeForAppointment} />
+                        <Action label="Lập hồ sơ bệnh án" icon={<Ionicons name="document-text-outline" size={18} color="#fff" />} color={COLORS.primaryDark} onPress={openRecordForm} />
+                        <Action label="Kê đơn thuốc điện tử" icon={<MaterialCommunityIcons name="pill" size={18} color="#fff" />} color={COLORS.primary} onPress={prescribeForAppointment} />
                       </>
                     )}
                   </View>
@@ -442,7 +474,7 @@ export default function DoctorDashboardScreen({ route }) {
                 <Text style={styles.modalSubtitle}>Ghi chép tình trạng và phác đồ điều trị</Text>
               </View>
               <TouchableOpacity style={styles.closeBtn} onPress={() => setRecordVisible(false)}>
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalScroll}>
@@ -481,7 +513,7 @@ export default function DoctorDashboardScreen({ route }) {
                 <Text style={styles.modalSubtitle}>{prescriptionContext ? `Bé ${prescriptionContext.pet_name}` : ''}</Text>
               </View>
               <TouchableOpacity style={styles.closeBtn} onPress={() => setPrescriptionVisible(false)}>
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalScroll}>
@@ -527,7 +559,7 @@ export default function DoctorDashboardScreen({ route }) {
                 <Text style={styles.modalSubtitle}>Kho thuốc đang có {medicines.length} mặt hàng</Text>
               </View>
               <TouchableOpacity style={styles.closeBtn} onPress={() => setMedicinePickerVisible(false)}>
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalScroll}>
@@ -554,7 +586,7 @@ function Stat({ label, value, color, icon }) {
   return (
     <View style={styles.stat}>
       <View style={styles.statTop}>
-        <Text style={styles.statIcon}>{icon}</Text>
+        <View>{icon}</View>
         <Text style={[styles.statValue, { color }]}>{value}</Text>
       </View>
       <Text style={styles.statLabel}>{label}</Text>
@@ -571,10 +603,13 @@ function InfoRow({ label, value }) {
   );
 }
 
-function Action({ label, color, onPress }) {
+function Action({ label, icon, color, onPress }) {
   return (
     <TouchableOpacity style={[styles.action, { backgroundColor: color }]} onPress={onPress}>
-      <Text style={styles.actionText}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        {icon}
+        <Text style={styles.actionText}>{label}</Text>
+      </View>
     </TouchableOpacity>
   );
 }

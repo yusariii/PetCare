@@ -15,6 +15,7 @@ import {
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { createDocumentApi, deleteDocumentApi, listDocumentsApi, updateDocumentApi } from '../../api/documentApi';
 
 const SPECIES_OPTIONS = [
@@ -124,13 +125,19 @@ export default function KnowledgeBaseScreen() {
         <View style={styles.header}>
           <View style={styles.headerTitleWrap}>
             <Text style={styles.eyebrow}>CƠ SỞ TRI THỨC AI</Text>
-            <Text style={styles.title}>Tài liệu Y Khoa RAG 📚</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              <Text style={styles.title}>Tài liệu Y Khoa RAG</Text>
+              <Ionicons name="book-outline" size={24} color={COLORS.primary} />
+            </View>
             <Text style={styles.subtitle}>
               Cung cấp kiến thức y tế chuẩn xác để AI tư vấn bám sát tài liệu thực tế của bệnh viện.
             </Text>
           </View>
           <TouchableOpacity style={styles.addButton} onPress={openCreateForm}>
-            <Text style={styles.addButtonText}>+ Thêm tài liệu</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={styles.addButtonText}>Thêm tài liệu</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
@@ -138,10 +145,13 @@ export default function KnowledgeBaseScreen() {
           <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
         ) : documents.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📖</Text>
+            <Ionicons name="book-outline" size={44} color={COLORS.textTertiary || '#94A3B8'} style={{ marginBottom: 12 }} />
             <Text style={styles.empty}>Chưa có tài liệu nào trong cơ sở tri thức.</Text>
             <TouchableOpacity style={[styles.addButton, { marginTop: 12 }]} onPress={openCreateForm}>
-              <Text style={styles.addButtonText}>Tạo tài liệu đầu tiên</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="add" size={18} color="#fff" />
+                <Text style={styles.addButtonText}>Tạo tài liệu đầu tiên</Text>
+              </View>
             </TouchableOpacity>
           </View>
         ) : (
@@ -164,17 +174,22 @@ export default function KnowledgeBaseScreen() {
 
                 <View style={styles.metaRow}>
                   <View style={styles.metaBadge}>
-                    <Text style={styles.metaBadgeText}>🐾 {speciesLabel(doc.species)}</Text>
+                    <FontAwesome5 name="paw" size={11} color={COLORS.primaryDark} />
+                    <Text style={styles.metaBadgeText}>{speciesLabel(doc.species)}</Text>
                   </View>
                   <View style={styles.metaBadge}>
-                    <Text style={styles.metaBadgeText}>🏷️ {doc.category || 'Chưa phân loại'}</Text>
+                    <Ionicons name="pricetag-outline" size={12} color={COLORS.primaryDark} />
+                    <Text style={styles.metaBadgeText}>{doc.category || 'Chưa phân loại'}</Text>
                   </View>
                 </View>
 
                 <Text style={styles.docContent} numberOfLines={3}>{doc.content}</Text>
 
                 <View style={styles.docFooter}>
-                  <Text style={styles.editHintText}>Chạm để chỉnh sửa ✍️</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Ionicons name="create-outline" size={14} color={COLORS.primary} />
+                    <Text style={styles.editHintText}>Chạm để chỉnh sửa</Text>
+                  </View>
                   <TouchableOpacity
                     style={styles.deleteButton}
                     onPress={(e) => {
@@ -201,7 +216,7 @@ export default function KnowledgeBaseScreen() {
                 <Text style={styles.modalSubtitle}>Kiến thức sẽ được lập chỉ mục vector cho AI</Text>
               </View>
               <TouchableOpacity style={styles.closeBtn} onPress={() => setFormVisible(false)}>
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -399,6 +414,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   metaBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: COLORS.background,
     paddingVertical: 4,
     paddingHorizontal: 10,

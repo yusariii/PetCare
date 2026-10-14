@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView } from 'react-native';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
+import { FontAwesome5 } from '@expo/vector-icons';
 import { registerApi } from '../../api/authApi';
 
 export default function RegisterScreen({ navigation }) {
@@ -65,7 +66,7 @@ export default function RegisterScreen({ navigation }) {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.card}>
           <View style={styles.brandBadge}>
-            <Text style={styles.brandIcon}>🐾</Text>
+            <FontAwesome5 name="paw" size={30} color={COLORS.primary} />
           </View>
           <Text style={styles.title}>Tạo Tài Khoản Mới</Text>
           <Text style={styles.subtitle}>Bắt đầu chăm sóc và theo dõi sức khỏe thú cưng cùng PetCare</Text>

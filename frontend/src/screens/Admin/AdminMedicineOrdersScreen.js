@@ -12,6 +12,7 @@ import {
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { listMedicineOrdersApi, updateMedicineOrderStatusApi } from '../../api/medicineOrderApi';
 
 export default function AdminMedicineOrdersScreen() {
@@ -62,7 +63,10 @@ export default function AdminMedicineOrdersScreen() {
       >
         <View style={styles.header}>
           <Text style={styles.eyebrow}>QUẦY DƯỢC PHẨM</Text>
-          <Text style={styles.title}>Đơn Thuốc Chờ Thanh Toán 🧾</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <Text style={styles.title}>Đơn Thuốc Chờ Thanh Toán</Text>
+            <Ionicons name="receipt-outline" size={24} color={COLORS.primary} />
+          </View>
           <Text style={styles.subtitle}>
             Xác nhận xuất thuốc và thanh toán tại quầy khi khách hàng đến nhận đơn.
           </Text>
@@ -72,7 +76,7 @@ export default function AdminMedicineOrdersScreen() {
           <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
         ) : orders.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>✨</Text>
+            <Ionicons name="sparkles-outline" size={44} color={COLORS.textTertiary || '#94A3B8'} style={{ marginBottom: 12 }} />
             <Text style={styles.empty}>Hiện không có đơn nào đang chờ thanh toán.</Text>
             <Text style={styles.emptySub}>Các đơn mua thuốc mới từ khách hàng sẽ xuất hiện tại đây.</Text>
           </View>
@@ -85,15 +89,27 @@ export default function AdminMedicineOrdersScreen() {
                 <View key={order.id} style={[styles.card, isTabletOrDesktop && styles.cardDesktop]}>
                   <View style={styles.cardHeader}>
                     <View style={styles.statusBadge}>
-                      <Text style={styles.statusBadgeText}>⏳ Chờ thanh toán</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="hourglass-outline" size={13} color="#D97706" />
+                        <Text style={styles.statusBadgeText}>Chờ thanh toán</Text>
+                      </View>
                     </View>
                     <Text style={styles.orderId}>#ĐH-{order.id}</Text>
                   </View>
 
                   <View style={styles.customerBox}>
-                    <Text style={styles.customerName}>👤 {order.customer_name}</Text>
-                    <Text style={styles.customerPhone}>📞 {order.customer_phone || 'Chưa có SĐT'}</Text>
-                    <Text style={styles.petName}>🐾 Thú cưng: {order.pet_name || 'Chưa cập nhật'}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="person-outline" size={13} color={COLORS.text} />
+                      <Text style={styles.customerName}>{order.customer_name}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="call-outline" size={13} color={COLORS.textSecondary} />
+                      <Text style={styles.customerPhone}>{order.customer_phone || 'Chưa có SĐT'}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <FontAwesome5 name="paw" size={12} color={COLORS.primary} />
+                      <Text style={styles.petName}>Thú cưng: {order.pet_name || 'Chưa cập nhật'}</Text>
+                    </View>
                   </View>
 
                   <View style={styles.amountBox}>
@@ -112,7 +128,10 @@ export default function AdminMedicineOrdersScreen() {
                       {isProcessing ? (
                         <ActivityIndicator color="#fff" size="small" />
                       ) : (
-                        <Text style={styles.actionText}>✓ Xác nhận thanh toán</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                          <Ionicons name="checkmark-circle-outline" size={16} color="#fff" />
+                          <Text style={styles.actionText}>Xác nhận thanh toán</Text>
+                        </View>
                       )}
                     </TouchableOpacity>
 

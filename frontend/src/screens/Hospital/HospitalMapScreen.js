@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Modal,
 } from 'react-native';
+import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
@@ -23,14 +24,16 @@ const STATUS_META = {
 
 // BR08: sinh hướng dẫn lối đi từ sảnh tiếp đón tới phòng dựa trên tầng & tọa độ
 const getWayfindingSteps = (room) => {
-  const steps = ['🚪 Xuất phát từ sảnh tiếp đón chính (tầng trệt).'];
+  const steps = [
+    { icon: 'exit-outline', text: 'Xuất phát từ sảnh tiếp đón chính (tầng trệt).' },
+  ];
   if (room.floor > 1) {
-    steps.push(`🔼 Di chuyển lên Tầng ${room.floor} bằng thang bộ hoặc thang máy.`);
+    steps.push({ icon: 'arrow-up-circle-outline', text: `Di chuyển lên Tầng ${room.floor} bằng thang bộ hoặc thang máy.` });
   } else {
-    steps.push('➡️ Đi thẳng theo hành lang chính của tầng trệt.');
+    steps.push({ icon: 'arrow-forward-circle-outline', text: 'Đi thẳng theo hành lang chính của tầng trệt.' });
   }
   const side = (room.coordinate_x ?? 0) % 2 === 0 ? 'bên trái' : 'bên phải';
-  steps.push(`🧭 Rẽ ${side} theo biển chỉ dẫn, phòng ${room.room_code} nằm ở khu vực này.`);
+  steps.push({ icon: 'compass-outline', text: `Rẽ ${side} theo biển chỉ dẫn, phòng ${room.room_code} nằm ở khu vực này.` });
   return steps;
 };
 
@@ -102,7 +105,7 @@ export default function HospitalMapScreen({ navigation }) {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Sơ Đồ Bệnh Viện 🏥</Text>
+          <Text style={styles.title}>Sơ Đồ Bệnh Viện</Text>
           <Text style={styles.subtitle}>Mật độ và tình trạng tiếp nhận bệnh nhân theo thời gian thực</Text>
         </View>
       </View>
@@ -117,9 +120,17 @@ export default function HospitalMapScreen({ navigation }) {
               onPress={() => setSelectedFloor(floor)}
               activeOpacity={0.8}
             >
-              <Text style={[styles.segmentText, selectedFloor === floor && styles.segmentTextActive]}>
-                🏢 Tầng {floor} {floor === 1 ? '(Sảnh & Khám Nội)' : '(Chuyên Khoa & Spa)'}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <FontAwesome5
+                  name="building"
+                  size={13}
+                  color={selectedFloor === floor ? COLORS.primaryDark : COLORS.textSecondary}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={[styles.segmentText, selectedFloor === floor && styles.segmentTextActive]}>
+                  Tầng {floor} {floor === 1 ? '(Sảnh & Khám Nội)' : '(Chuyên Khoa & Spa)'}
+                </Text>
+              </View>
             </TouchableOpacity>
           ))}
         </View>
@@ -143,7 +154,10 @@ export default function HospitalMapScreen({ navigation }) {
         </View>
       ) : error ? (
         <View style={styles.centerContainer}>
-          <Text style={styles.errorText}>❌ {error}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+            <Ionicons name="alert-circle" size={18} color={COLORS.danger} style={{ marginRight: 6 }} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
           <TouchableOpacity style={styles.retryButton} onPress={() => loadRooms()}>
             <Text style={styles.retryButtonText}>Thử lại</Text>
           </TouchableOpacity>
@@ -206,10 +220,16 @@ export default function HospitalMapScreen({ navigation }) {
                   </View>
 
                   <View style={styles.roomCardFooter}>
-                    <Text style={styles.serviceCountText}>
-                      💊 {room.services?.length || 0} dịch vụ chuyên khoa
-                    </Text>
-                    <Text style={styles.detailLinkText}>Xem chi tiết ➔</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <MaterialCommunityIcons name="pill" size={14} color={COLORS.textSecondary} style={{ marginRight: 4 }} />
+                      <Text style={styles.serviceCountText}>
+                        {room.services?.length || 0} dịch vụ chuyên khoa
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={styles.detailLinkText}>Xem chi tiết</Text>
+                      <Ionicons name="arrow-forward" size={13} color={COLORS.primaryDark} style={{ marginLeft: 3 }} />
+                    </View>
                   </View>
                 </TouchableOpacity>
               );
@@ -230,11 +250,11 @@ export default function HospitalMapScreen({ navigation }) {
           <View style={[styles.modalContent, isTabletOrDesktop && styles.modalContentDesktop]}>
             <View style={styles.modalHeader}>
               <View>
-                <Text style={styles.modalTitle}>Chi tiết phòng khám 🏥</Text>
+                <Text style={styles.modalTitle}>Chi tiết phòng khám</Text>
                 <Text style={styles.modalSubtitle}>Thông tin chuyên khoa & hướng dẫn lối đi</Text>
               </View>
               <TouchableOpacity onPress={() => setShowRoomDetail(false)} style={styles.modalCloseBtn}>
-                <Text style={styles.closeButton}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -252,13 +272,19 @@ export default function HospitalMapScreen({ navigation }) {
 
                 {selectedRoom.description && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.sectionLabel}>📝 Chức năng chuyên môn:</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                      <Ionicons name="document-text-outline" size={15} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                      <Text style={styles.sectionLabel}>Chức năng chuyên môn:</Text>
+                    </View>
                     <Text style={styles.sectionContent}>{selectedRoom.description}</Text>
                   </View>
                 )}
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.sectionLabel}>📊 Năng lực & Công suất tiếp nhận:</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <Ionicons name="bar-chart-outline" size={15} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                    <Text style={styles.sectionLabel}>Năng lực & Công suất tiếp nhận:</Text>
+                  </View>
                   <Text style={styles.sectionContent}>
                     • Tối đa: {selectedRoom.max_slot_per_hour} ca khám / mỗi khung giờ
                   </Text>
@@ -268,23 +294,35 @@ export default function HospitalMapScreen({ navigation }) {
                 </View>
 
                 <View style={styles.detailSection}>
-                  <Text style={styles.sectionLabel}>🧭 Chỉ dẫn lối đi trong viện:</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <Ionicons name="compass-outline" size={16} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                    <Text style={styles.sectionLabel}>Chỉ dẫn lối đi trong viện:</Text>
+                  </View>
                   {getWayfindingSteps(selectedRoom).map((step, idx) => (
-                    <Text key={idx} style={styles.stepItemText}>{step}</Text>
+                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 3 }}>
+                      <Ionicons name={step.icon} size={15} color={COLORS.primary} style={{ marginRight: 8 }} />
+                      <Text style={styles.stepItemText}>{step.text}</Text>
+                    </View>
                   ))}
                 </View>
 
                 {selectedRoom.services && selectedRoom.services.length > 0 && (
                   <View style={styles.detailSection}>
-                    <Text style={styles.sectionLabel}>💊 Các dịch vụ thực hiện tại phòng ({selectedRoom.services.length}):</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                      <MaterialCommunityIcons name="pill" size={15} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                      <Text style={styles.sectionLabel}>Các dịch vụ thực hiện tại phòng ({selectedRoom.services.length}):</Text>
+                    </View>
                     <View style={styles.serviceItemContainer}>
                       {selectedRoom.services.map((service) => (
                         <View key={service.id} style={styles.serviceItem}>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.serviceName}>{service.service_name}</Text>
-                            <Text style={styles.serviceInfo}>
-                              ⏱️ {service.duration_minutes} phút {service.description ? `• ${service.description}` : ''}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                              <Ionicons name="time-outline" size={12} color={COLORS.textSecondary} style={{ marginRight: 3 }} />
+                              <Text style={styles.serviceInfo}>
+                                {service.duration_minutes} phút {service.description ? `• ${service.description}` : ''}
+                              </Text>
+                            </View>
                           </View>
                           <Text style={styles.servicePrice}>
                             {Number(service.price || 0).toLocaleString('vi-VN')} đ
@@ -300,7 +338,10 @@ export default function HospitalMapScreen({ navigation }) {
                   onPress={handleBookingRedirect}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.bookingButtonText}>📅 Đặt Lịch Tại Phòng Này Ngay</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Ionicons name="calendar-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                    <Text style={styles.bookingButtonText}>Đặt Lịch Tại Phòng Này Ngay</Text>
+                  </View>
                 </TouchableOpacity>
               </ScrollView>
             )}
@@ -521,10 +562,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   errorText: {
-    fontSize: 14,
     color: COLORS.danger,
-    textAlign: 'center',
-    marginBottom: 12,
+    fontSize: 14,
+    fontWeight: '500',
   },
   retryButton: {
     backgroundColor: COLORS.primary,
@@ -589,11 +629,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeButton: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: 'bold',
-  },
   modalBody: {
     paddingVertical: 6,
   },
@@ -637,7 +672,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
     color: COLORS.primaryDark,
-    marginBottom: 4,
   },
   sectionContent: {
     fontSize: 13,
@@ -647,8 +681,8 @@ const styles = StyleSheet.create({
   stepItemText: {
     fontSize: 13,
     color: COLORS.text,
-    lineHeight: 22,
-    marginLeft: 4,
+    lineHeight: 20,
+    flex: 1,
   },
   serviceItemContainer: {
     gap: 8,
@@ -670,7 +704,6 @@ const styles = StyleSheet.create({
   serviceInfo: {
     fontSize: 11,
     color: COLORS.textSecondary,
-    marginTop: 2,
   },
   servicePrice: {
     fontSize: 13,
@@ -683,6 +716,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 18,
     marginBottom: 8,
     ...SHADOWS.sm,

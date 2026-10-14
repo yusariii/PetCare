@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
-    FlatList,
     TouchableOpacity,
     StyleSheet,
     RefreshControl,
@@ -14,6 +13,7 @@ import {
     Alert,
     ActivityIndicator,
 } from 'react-native';
+import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
@@ -79,18 +79,24 @@ export default function HomeScreen({ navigation }) {
     };
 
     const shortcuts = [
-        { key: 'Booking', icon: '📅', label: 'Đặt lịch khám', description: 'Chọn chuyên khoa & giờ hẹn' },
-        { key: 'AIChat', icon: '🤖', label: 'Bác sĩ AI', description: 'Tư vấn triệu chứng 24/7' },
-        { key: 'Hospital', icon: '🏥', label: 'Bản đồ viện', description: 'Sơ đồ phòng khám trực quan' },
-        { key: 'Appointments', icon: '📋', label: 'Lịch hẹn', description: 'Theo dõi ca khám của bé' },
-        { key: 'Pharmacy', icon: '💊', label: 'Quầy thuốc', description: 'Đơn thuốc & nhận tại viện' },
-        { key: 'Profile', icon: '👤', label: 'Tài khoản', description: 'Thông tin cá nhân & cài đặt' },
+        { key: 'Booking', icon: 'calendar-outline', type: 'ion', label: 'Đặt lịch khám', description: 'Chọn chuyên khoa & giờ hẹn' },
+        { key: 'AIChat', icon: 'robot', type: 'mci', label: 'Bác sĩ AI', description: 'Tư vấn triệu chứng 24/7' },
+        { key: 'Hospital', icon: 'hospital', type: 'fa5', label: 'Bản đồ viện', description: 'Sơ đồ phòng khám trực quan' },
+        { key: 'Appointments', icon: 'clipboard-outline', type: 'ion', label: 'Lịch hẹn', description: 'Theo dõi ca khám của bé' },
+        { key: 'Pharmacy', icon: 'pill', type: 'mci', label: 'Quầy thuốc', description: 'Đơn thuốc & nhận tại viện' },
+        { key: 'Profile', icon: 'person-outline', type: 'ion', label: 'Tài khoản', description: 'Thông tin cá nhân & cài đặt' },
     ];
 
     const getPetAvatarBg = (species) => {
         if (species === 'dog') return '#FEF3C7';
         if (species === 'cat') return '#E0F2FE';
         return '#EDE9FE';
+    };
+
+    const renderPetAvatarIcon = (species) => {
+        if (species === 'dog') return <FontAwesome5 name="dog" size={22} color="#B45309" />;
+        if (species === 'cat') return <FontAwesome5 name="cat" size={22} color="#0369A1" />;
+        return <FontAwesome5 name="paw" size={20} color="#6D28D9" />;
     };
 
     return (
@@ -103,9 +109,13 @@ export default function HomeScreen({ navigation }) {
                 <View style={[styles.heroBanner, isTabletOrDesktop && styles.heroBannerDesktop]}>
                     <View style={styles.heroTextContent}>
                         <View style={styles.heroBadge}>
-                            <Text style={styles.heroBadgeText}>✨ Bệnh viện Thú y PetCare</Text>
+                            <Ionicons name="sparkles" size={13} color={COLORS.primaryDark} style={{ marginRight: 4 }} />
+                            <Text style={styles.heroBadgeText}>Bệnh viện Thú y PetCare</Text>
                         </View>
-                        <Text style={styles.heroTitle}>Chăm sóc tận tâm,{'\n'}yêu thương trọn vẹn 🐾</Text>
+                        <View style={styles.heroTitleRow}>
+                            <Text style={styles.heroTitle}>Chăm sóc tận tâm,{'\n'}yêu thương trọn vẹn </Text>
+                            <FontAwesome5 name="paw" size={22} color={COLORS.primary} style={{ marginTop: 4 }} />
+                        </View>
                         <Text style={styles.heroSubtitle}>
                             Quản lý hồ sơ sức khỏe, đặt lịch khám thông minh và nhận chẩn đoán y tế có kiểm chứng từ Bác sĩ AI.
                         </Text>
@@ -115,21 +125,23 @@ export default function HomeScreen({ navigation }) {
                                 onPress={() => navigation.navigate('Booking')}
                                 activeOpacity={0.8}
                             >
-                                <Text style={styles.heroPrimaryBtnText}>📅 Đặt lịch khám ngay</Text>
+                                <Ionicons name="calendar-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                                <Text style={styles.heroPrimaryBtnText}>Đặt lịch khám ngay</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 style={styles.heroSecondaryBtn}
                                 onPress={() => navigation.navigate('AIChat')}
                                 activeOpacity={0.8}
                             >
-                                <Text style={styles.heroSecondaryBtnText}>🤖 Hỏi bác sĩ AI</Text>
+                                <MaterialCommunityIcons name="robot-outline" size={18} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                                <Text style={styles.heroSecondaryBtnText}>Hỏi bác sĩ AI</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
                     {isTabletOrDesktop && (
                         <View style={styles.heroDecoration}>
                             <View style={styles.heroBigIconBox}>
-                                <Text style={styles.heroBigIcon}>🐕🐈</Text>
+                                <FontAwesome5 name="paw" size={48} color={COLORS.primary} />
                             </View>
                         </View>
                     )}
@@ -154,7 +166,10 @@ export default function HomeScreen({ navigation }) {
                 {/* Pets Section */}
                 <View style={styles.sectionHeader}>
                     <View>
-                        <Text style={styles.sectionTitle}>Bé cưng của bạn 🐾</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={styles.sectionTitle}>Bé cưng của bạn</Text>
+                            <FontAwesome5 name="paw" size={16} color={COLORS.primary} />
+                        </View>
                         <Text style={styles.sectionSubtitle}>
                             {pets.length > 0 ? `Đang quản lý hồ sơ cho ${pets.length} thú cưng` : 'Chưa có bé cưng nào trong danh bạ'}
                         </Text>
@@ -164,7 +179,8 @@ export default function HomeScreen({ navigation }) {
                         onPress={() => setShowAddPet(true)}
                         activeOpacity={0.8}
                     >
-                        <Text style={styles.addButtonText}>＋ Thêm bé mới</Text>
+                        <Ionicons name="add" size={16} color="#fff" style={{ marginRight: 4 }} />
+                        <Text style={styles.addButtonText}>Thêm bé mới</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -182,9 +198,7 @@ export default function HomeScreen({ navigation }) {
                             >
                                 <View style={styles.petCardTop}>
                                     <View style={[styles.avatar, { backgroundColor: getPetAvatarBg(item.species) }]}>
-                                        <Text style={styles.avatarText}>
-                                            {item.species === 'dog' ? '🐶' : item.species === 'cat' ? '🐱' : '🐾'}
-                                        </Text>
+                                        {renderPetAvatarIcon(item.species)}
                                     </View>
                                     <View style={styles.petHeaderInfo}>
                                         <Text style={styles.petName} numberOfLines={1}>{item.name}</Text>
@@ -196,8 +210,14 @@ export default function HomeScreen({ navigation }) {
                                             </View>
                                             {item.gender && (
                                                 <View style={[styles.genderBadge, item.gender === 'female' ? styles.genderFemale : styles.genderMale]}>
+                                                    <Ionicons
+                                                        name={item.gender === 'male' ? 'male' : 'female'}
+                                                        size={11}
+                                                        color={item.gender === 'female' ? '#BE185D' : '#0369A1'}
+                                                        style={{ marginRight: 3 }}
+                                                    />
                                                     <Text style={styles.genderBadgeText}>
-                                                        {item.gender === 'male' ? '♂️ Đực' : '♀️ Cái'}
+                                                        {item.gender === 'male' ? 'Đực' : 'Cái'}
                                                     </Text>
                                                 </View>
                                             )}
@@ -228,14 +248,16 @@ export default function HomeScreen({ navigation }) {
                                         onPress={() => navigation.navigate('Booking')}
                                         activeOpacity={0.7}
                                     >
-                                        <Text style={styles.cardBookingBtnText}>📅 Đặt lịch khám</Text>
+                                        <Ionicons name="calendar-outline" size={13} color="#fff" style={{ marginRight: 4 }} />
+                                        <Text style={styles.cardBookingBtnText}>Đặt lịch khám</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity
                                         style={styles.cardAiBtn}
                                         onPress={() => navigation.navigate('AIChat')}
                                         activeOpacity={0.7}
                                     >
-                                        <Text style={styles.cardAiBtnText}>🤖 Tư vấn AI</Text>
+                                        <MaterialCommunityIcons name="robot-outline" size={15} color={COLORS.primaryDark} style={{ marginRight: 4 }} />
+                                        <Text style={styles.cardAiBtnText}>Tư vấn AI</Text>
                                     </TouchableOpacity>
                                 </View>
                             </View>
@@ -243,18 +265,19 @@ export default function HomeScreen({ navigation }) {
                     </View>
                 ) : (
                     <View style={styles.emptyCard}>
-                        <Text style={styles.emptyIcon}>🐾</Text>
+                        <FontAwesome5 name="paw" size={42} color={COLORS.textTertiary || '#94A3B8'} style={{ marginBottom: 12 }} />
                         <Text style={styles.emptyTitle}>Chưa có bé cưng nào</Text>
                         <Text style={styles.emptySub}>Thêm bé cưng để theo dõi hồ sơ y tế, lịch tiêm phòng và đặt lịch khám tiện lợi.</Text>
                         <TouchableOpacity style={styles.emptyButton} onPress={() => setShowAddPet(true)}>
-                            <Text style={styles.emptyButtonText}>＋ Thêm bé cưng đầu tiên</Text>
+                            <Ionicons name="add-circle-outline" size={17} color="#fff" style={{ marginRight: 6 }} />
+                            <Text style={styles.emptyButtonText}>Thêm bé cưng đầu tiên</Text>
                         </TouchableOpacity>
                     </View>
                 )}
 
                 {/* Shortcuts & Services Section */}
                 <View style={styles.shortcutSection}>
-                    <Text style={styles.sectionTitle}>Truy cập nhanh dịch vụ viện 🏥</Text>
+                    <Text style={styles.sectionTitle}>Truy cập nhanh dịch vụ viện</Text>
                     <Text style={styles.sectionSubtitle}>Các tiện ích chăm sóc và quản lý sức khỏe thú cưng</Text>
                     <View style={[styles.shortcutGrid, isTabletOrDesktop && styles.shortcutGridDesktop]}>
                         {shortcuts.map((shortcut) => (
@@ -265,7 +288,13 @@ export default function HomeScreen({ navigation }) {
                                 activeOpacity={0.8}
                             >
                                 <View style={styles.shortcutIconContainer}>
-                                    <Text style={styles.shortcutIcon}>{shortcut.icon}</Text>
+                                    {shortcut.type === 'fa5' ? (
+                                        <FontAwesome5 name={shortcut.icon} size={20} color={COLORS.primary} />
+                                    ) : shortcut.type === 'mci' ? (
+                                        <MaterialCommunityIcons name={shortcut.icon} size={22} color={COLORS.primary} />
+                                    ) : (
+                                        <Ionicons name={shortcut.icon} size={22} color={COLORS.primary} />
+                                    )}
                                 </View>
                                 <Text style={styles.shortcutLabel}>{shortcut.label}</Text>
                                 <Text style={styles.shortcutDescription} numberOfLines={2}>{shortcut.description}</Text>
@@ -284,7 +313,10 @@ export default function HomeScreen({ navigation }) {
                     <View style={[styles.modalContent, isTabletOrDesktop && styles.modalContentDesktop]}>
                         <View style={styles.modalHeader}>
                             <View>
-                                <Text style={styles.modalTitle}>Thêm bé cưng mới 🐾</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Text style={styles.modalTitle}>Thêm bé cưng mới</Text>
+                                    <FontAwesome5 name="paw" size={16} color={COLORS.primary} />
+                                </View>
                                 <Text style={styles.modalSubtitle}>Nhập thông tin để tạo hồ sơ sức khỏe</Text>
                             </View>
                             <TouchableOpacity
@@ -292,7 +324,7 @@ export default function HomeScreen({ navigation }) {
                                 onPress={() => setShowAddPet(false)}
                                 disabled={submitting}
                             >
-                                <Text style={styles.closeButton}>✕</Text>
+                                <Ionicons name="close" size={20} color={COLORS.textSecondary} />
                             </TouchableOpacity>
                         </View>
 
@@ -310,15 +342,21 @@ export default function HomeScreen({ navigation }) {
                             <Text style={styles.inputLabel}>Loài <Text style={styles.required}>*</Text></Text>
                             <View style={styles.optionRow}>
                                 {[
-                                    { value: 'dog', label: '🐶 Chó' },
-                                    { value: 'cat', label: '🐱 Mèo' },
-                                    { value: 'other', label: '🐾 Khác' },
+                                    { value: 'dog', label: 'Chó', icon: 'dog' },
+                                    { value: 'cat', label: 'Mèo', icon: 'cat' },
+                                    { value: 'other', label: 'Khác', icon: 'paw' },
                                 ].map((option) => (
                                     <TouchableOpacity
                                         key={option.value}
                                         style={[styles.option, petForm.species === option.value && styles.optionActive]}
                                         onPress={() => updatePetForm('species', option.value)}
                                     >
+                                        <FontAwesome5
+                                            name={option.icon}
+                                            size={14}
+                                            color={petForm.species === option.value ? COLORS.primaryDark : COLORS.textSecondary}
+                                            style={{ marginRight: 6 }}
+                                        />
                                         <Text style={[styles.optionText, petForm.species === option.value && styles.optionTextActive]}>
                                             {option.label}
                                         </Text>
@@ -364,14 +402,20 @@ export default function HomeScreen({ navigation }) {
                             <Text style={styles.inputLabel}>Giới tính</Text>
                             <View style={styles.optionRow}>
                                 {[
-                                    { value: 'male', label: '♂️ Đực' },
-                                    { value: 'female', label: '♀️ Cái' },
+                                    { value: 'male', label: 'Đực', icon: 'male' },
+                                    { value: 'female', label: 'Cái', icon: 'female' },
                                 ].map((option) => (
                                     <TouchableOpacity
                                         key={option.value}
                                         style={[styles.option, petForm.gender === option.value && styles.optionActive]}
                                         onPress={() => updatePetForm('gender', option.value)}
                                     >
+                                        <Ionicons
+                                            name={option.icon}
+                                            size={14}
+                                            color={petForm.gender === option.value ? COLORS.primaryDark : COLORS.textSecondary}
+                                            style={{ marginRight: 6 }}
+                                        />
                                         <Text style={[styles.optionText, petForm.gender === option.value && styles.optionTextActive]}>
                                             {option.label}
                                         </Text>
@@ -388,7 +432,10 @@ export default function HomeScreen({ navigation }) {
                                 {submitting ? (
                                     <ActivityIndicator color="#fff" />
                                 ) : (
-                                    <Text style={styles.submitButtonText}>💾 Lưu thông tin bé</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Ionicons name="save-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                                        <Text style={styles.submitButtonText}>Lưu thông tin bé</Text>
+                                    </View>
                                 )}
                             </TouchableOpacity>
                         </ScrollView>
@@ -429,6 +476,8 @@ const styles = StyleSheet.create({
         maxWidth: 700,
     },
     heroBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
         alignSelf: 'flex-start',
         backgroundColor: COLORS.primaryLight,
         paddingHorizontal: 10,
@@ -440,6 +489,11 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '700',
         color: COLORS.primaryDark,
+    },
+    heroTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 6,
     },
     heroTitle: {
         fontSize: 24,
@@ -457,9 +511,11 @@ const styles = StyleSheet.create({
     heroActions: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 10,
+        gap: 12,
     },
     heroPrimaryBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: COLORS.primary,
         paddingHorizontal: 18,
         paddingVertical: 12,
@@ -467,42 +523,41 @@ const styles = StyleSheet.create({
         ...SHADOWS.sm,
     },
     heroPrimaryBtnText: {
-        color: '#FFFFFF',
-        fontWeight: 'bold',
+        color: '#fff',
+        fontWeight: '700',
         fontSize: 14,
     },
     heroSecondaryBtn: {
-        backgroundColor: COLORS.surface,
-        borderWidth: 1,
-        borderColor: COLORS.primary,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.primaryLight,
         paddingHorizontal: 18,
         paddingVertical: 12,
         borderRadius: 12,
+        borderWidth: 1,
+        borderColor: COLORS.primary,
     },
     heroSecondaryBtnText: {
         color: COLORS.primaryDark,
-        fontWeight: 'bold',
+        fontWeight: '700',
         fontSize: 14,
     },
     heroDecoration: {
         marginLeft: 24,
     },
     heroBigIconBox: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
+        width: 100,
+        height: 100,
+        borderRadius: 24,
         backgroundColor: COLORS.surface,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 2,
-        borderColor: '#CCFBF1',
+        borderWidth: 1,
+        borderColor: COLORS.border,
         ...SHADOWS.md,
     },
-    heroBigIcon: {
-        fontSize: 48,
-    },
 
-    // Stats Row
+    // Quick Stats Bar
     statsRow: {
         flexDirection: 'row',
         gap: 12,
@@ -513,29 +568,29 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.surface,
         borderRadius: 16,
         padding: 16,
+        alignItems: 'center',
         borderWidth: 1,
         borderColor: COLORS.border,
-        alignItems: 'center',
         ...SHADOWS.sm,
     },
     statNumber: {
-        fontSize: 24,
-        fontWeight: 'bold',
+        fontSize: 22,
+        fontWeight: '800',
         color: COLORS.primary,
-        marginBottom: 4,
     },
     statLabel: {
         fontSize: 12,
         color: COLORS.textSecondary,
-        fontWeight: '600',
+        marginTop: 4,
         textAlign: 'center',
+        fontWeight: '500',
     },
 
     // Section Header
     sectionHeader: {
         flexDirection: 'row',
-        alignItems: 'center',
         justifyContent: 'space-between',
+        alignItems: 'center',
         marginBottom: 16,
     },
     sectionTitle: {
@@ -549,21 +604,22 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
     addButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: COLORS.primary,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
+        paddingHorizontal: 14,
+        paddingVertical: 9,
         borderRadius: 10,
         ...SHADOWS.sm,
     },
     addButtonText: {
-        color: '#FFFFFF',
-        fontWeight: 'bold',
+        color: '#fff',
+        fontWeight: '700',
         fontSize: 13,
     },
 
-    // Pets Grid & Cards
+    // Pets Grid
     petsGrid: {
-        flexDirection: 'column',
         gap: 14,
         marginBottom: 28,
     },
@@ -587,7 +643,7 @@ const styles = StyleSheet.create({
         width: '48.5%',
     },
     petCardWide: {
-        width: '32%',
+        width: '31.8%',
     },
     petCardTop: {
         flexDirection: 'row',
@@ -595,21 +651,18 @@ const styles = StyleSheet.create({
         marginBottom: 14,
     },
     avatar: {
-        width: 52,
-        height: 52,
-        borderRadius: 26,
+        width: 48,
+        height: 48,
+        borderRadius: 24,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 14,
-    },
-    avatarText: {
-        fontSize: 26,
+        marginRight: 12,
     },
     petHeaderInfo: {
         flex: 1,
     },
     petName: {
-        fontSize: 18,
+        fontSize: 17,
         fontWeight: 'bold',
         color: COLORS.text,
         marginBottom: 4,
@@ -623,6 +676,8 @@ const styles = StyleSheet.create({
         paddingHorizontal: 8,
         paddingVertical: 2,
         borderRadius: 6,
+        borderWidth: 1,
+        borderColor: COLORS.border,
     },
     speciesBadgeText: {
         fontSize: 11,
@@ -630,6 +685,8 @@ const styles = StyleSheet.create({
         color: COLORS.textSecondary,
     },
     genderBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
         paddingHorizontal: 8,
         paddingVertical: 2,
         borderRadius: 6,
@@ -642,7 +699,7 @@ const styles = StyleSheet.create({
     },
     genderBadgeText: {
         fontSize: 11,
-        fontWeight: '600',
+        fontWeight: '700',
         color: COLORS.text,
     },
     petDetailsBox: {
@@ -659,11 +716,12 @@ const styles = StyleSheet.create({
     detailLabel: {
         fontSize: 12,
         color: COLORS.textSecondary,
+        fontWeight: '500',
     },
     detailValue: {
         fontSize: 12,
-        fontWeight: '600',
         color: COLORS.text,
+        fontWeight: '600',
     },
     petCardActions: {
         flexDirection: 'row',
@@ -671,48 +729,46 @@ const styles = StyleSheet.create({
     },
     cardBookingBtn: {
         flex: 1,
-        backgroundColor: COLORS.primaryLight,
-        paddingVertical: 9,
-        borderRadius: 10,
+        flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.primary,
+        paddingVertical: 9,
+        borderRadius: 8,
     },
     cardBookingBtnText: {
+        color: '#fff',
+        fontWeight: '700',
         fontSize: 12,
-        fontWeight: 'bold',
-        color: COLORS.primaryDark,
     },
     cardAiBtn: {
         flex: 1,
-        backgroundColor: COLORS.surfaceSubtle,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        paddingVertical: 9,
-        borderRadius: 10,
+        flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.primaryLight,
+        paddingVertical: 9,
+        borderRadius: 8,
     },
     cardAiBtnText: {
+        color: COLORS.primaryDark,
+        fontWeight: '700',
         fontSize: 12,
-        fontWeight: '600',
-        color: COLORS.textSecondary,
     },
 
     // Empty state
     emptyCard: {
         backgroundColor: COLORS.surface,
         borderRadius: 18,
-        padding: 36,
+        padding: 32,
         alignItems: 'center',
         borderWidth: 1,
         borderColor: COLORS.border,
         marginBottom: 28,
         ...SHADOWS.sm,
     },
-    emptyIcon: {
-        fontSize: 48,
-        marginBottom: 12,
-    },
     emptyTitle: {
-        fontSize: 18,
+        fontSize: 17,
         fontWeight: 'bold',
         color: COLORS.text,
         marginBottom: 6,
@@ -721,42 +777,44 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: COLORS.textSecondary,
         textAlign: 'center',
-        maxWidth: 360,
-        marginBottom: 18,
         lineHeight: 20,
+        marginBottom: 18,
+        maxWidth: 420,
     },
     emptyButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: COLORS.primary,
         paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: 12,
+        paddingVertical: 11,
+        borderRadius: 10,
+        ...SHADOWS.sm,
     },
     emptyButtonText: {
-        color: '#FFFFFF',
-        fontWeight: 'bold',
-        fontSize: 14,
+        color: '#fff',
+        fontWeight: '700',
+        fontSize: 13,
     },
 
-    // Shortcut section
+    // Shortcuts
     shortcutSection: {
-        paddingBottom: 28,
+        marginBottom: 32,
     },
     shortcutGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
         gap: 12,
         marginTop: 14,
     },
     shortcutGridDesktop: {
-        gap: 16,
+        flexDirection: 'row',
+        flexWrap: 'wrap',
     },
     shortcutCard: {
-        width: '48%',
         backgroundColor: COLORS.surface,
         borderRadius: 16,
         padding: 16,
         borderWidth: 1,
         borderColor: COLORS.border,
+        flexDirection: 'column',
         ...SHADOWS.sm,
     },
     shortcutCardDesktop: {
@@ -766,13 +824,10 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 12,
-        backgroundColor: COLORS.surfaceSubtle,
+        backgroundColor: COLORS.primaryLight,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 12,
-    },
-    shortcutIcon: {
-        fontSize: 22,
+        marginBottom: 10,
     },
     shortcutLabel: {
         fontSize: 15,
@@ -789,31 +844,30 @@ const styles = StyleSheet.create({
     // Modal
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(15, 23, 42, 0.6)',
+        backgroundColor: 'rgba(15, 23, 42, 0.55)',
         justifyContent: 'center',
         alignItems: 'center',
         padding: 16,
     },
     modalContent: {
         backgroundColor: COLORS.surface,
-        borderRadius: 24,
+        borderRadius: 22,
         padding: 24,
         width: '100%',
-        maxWidth: 540,
         maxHeight: '90%',
         ...SHADOWS.lg,
     },
     modalContentDesktop: {
-        maxWidth: 560,
+        maxWidth: 540,
     },
     modalHeader: {
         flexDirection: 'row',
-        alignItems: 'flex-start',
         justifyContent: 'space-between',
+        alignItems: 'flex-start',
         marginBottom: 18,
+        paddingBottom: 14,
         borderBottomWidth: 1,
         borderBottomColor: COLORS.border,
-        paddingBottom: 12,
     },
     modalTitle: {
         fontSize: 20,
@@ -821,7 +875,7 @@ const styles = StyleSheet.create({
         color: COLORS.text,
     },
     modalSubtitle: {
-        fontSize: 12,
+        fontSize: 13,
         color: COLORS.textSecondary,
         marginTop: 2,
     },
@@ -833,47 +887,40 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    closeButton: {
-        fontSize: 14,
-        color: COLORS.textSecondary,
-        fontWeight: 'bold',
-    },
     inputLabel: {
         fontSize: 13,
-        fontWeight: '600',
+        fontWeight: '700',
         color: COLORS.text,
-        marginTop: 12,
         marginBottom: 6,
+        marginTop: 10,
     },
     required: {
         color: COLORS.danger,
     },
     input: {
-        backgroundColor: COLORS.surfaceSubtle,
+        backgroundColor: COLORS.surface,
         borderWidth: 1,
         borderColor: COLORS.border,
-        borderRadius: 12,
+        borderRadius: 10,
         paddingHorizontal: 14,
-        paddingVertical: 12,
-        color: COLORS.text,
+        paddingVertical: 10,
         fontSize: 14,
+        color: COLORS.text,
     },
     optionRow: {
         flexDirection: 'row',
         gap: 8,
     },
-    twoColumnRow: {
-        flexDirection: 'row',
-    },
     option: {
         flex: 1,
+        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: COLORS.surfaceSubtle,
+        paddingVertical: 10,
+        borderRadius: 10,
         borderWidth: 1,
         borderColor: COLORS.border,
-        borderRadius: 12,
-        paddingVertical: 12,
-        backgroundColor: COLORS.surfaceSubtle,
     },
     optionActive: {
         backgroundColor: COLORS.primaryLight,
@@ -881,26 +928,28 @@ const styles = StyleSheet.create({
     },
     optionText: {
         fontSize: 13,
-        color: COLORS.textSecondary,
         fontWeight: '600',
+        color: COLORS.textSecondary,
     },
     optionTextActive: {
         color: COLORS.primaryDark,
         fontWeight: 'bold',
     },
+    twoColumnRow: {
+        flexDirection: 'row',
+    },
     submitButton: {
         backgroundColor: COLORS.primary,
+        paddingVertical: 13,
         borderRadius: 12,
-        paddingVertical: 14,
         alignItems: 'center',
-        justifyContent: 'center',
-        marginTop: 24,
-        marginBottom: 8,
+        marginTop: 20,
+        marginBottom: 10,
         ...SHADOWS.sm,
     },
     submitButtonText: {
-        color: '#FFFFFF',
-        fontWeight: 'bold',
+        color: '#fff',
         fontSize: 15,
+        fontWeight: 'bold',
     },
-});
+});

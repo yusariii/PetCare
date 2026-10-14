@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { PieChart, BarChart } from 'react-native-chart-kit';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
@@ -73,7 +74,10 @@ export default function DoctorAnalyticsScreen() {
     return (
       <ResponsiveContainer style={styles.container}>
         <View style={styles.centerContainer}>
-          <Text style={styles.errorText}>❌ {error}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="alert-circle" size={20} color={COLORS.danger} />
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
           <TouchableOpacity style={styles.retryButton} onPress={loadAnalytics}>
             <Text style={styles.retryButtonText}>Thử lại</Text>
           </TouchableOpacity>
@@ -104,14 +108,20 @@ export default function DoctorAnalyticsScreen() {
     <ResponsiveContainer style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={styles.title}>Báo Cáo & Thống Kê Viện 📊</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={styles.title}>Báo Cáo & Thống Kê Viện</Text>
+            <Ionicons name="bar-chart-outline" size={24} color={COLORS.primary} />
+          </View>
           <Text style={styles.subtitle}>Bảng điều khiển trực quan hóa dữ liệu vận hành và hiệu suất khám bệnh</Text>
         </View>
 
         <View style={[styles.dashboardGrid, isTabletOrDesktop && styles.dashboardGridDesktop]}>
           {/* Card Pie Chart */}
           <View style={[styles.card, isTabletOrDesktop && styles.cardDesktop]}>
-            <Text style={styles.cardTitle}>🚨 Tỷ lệ cảnh báo AI theo mức độ</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <Ionicons name="warning-outline" size={18} color={COLORS.warning} />
+              <Text style={styles.cardTitle}>Tỷ lệ cảnh báo AI theo mức độ</Text>
+            </View>
             <Text style={styles.cardSubtitle}>Phân loại mức độ cấp cứu từ các lượt tư vấn trực tuyến</Text>
             {urgencyData.length > 0 ? (
               <View style={styles.chartWrapper}>
@@ -133,7 +143,10 @@ export default function DoctorAnalyticsScreen() {
 
           {/* Card Bar Chart */}
           <View style={[styles.card, isTabletOrDesktop && styles.cardDesktop]}>
-            <Text style={styles.cardTitle}>🏥 Mật độ ca khám theo phòng chuyên khoa</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <FontAwesome5 name="hospital" size={15} color={COLORS.primary} />
+              <Text style={styles.cardTitle}>Mật độ ca khám theo phòng chuyên khoa</Text>
+            </View>
             <Text style={styles.cardSubtitle}>Khối lượng ca khám được tiếp nhận tại các phòng</Text>
             {roomLoad.length > 0 ? (
               <View style={styles.chartWrapper}>
@@ -154,7 +167,10 @@ export default function DoctorAnalyticsScreen() {
 
           {/* Card Top Services */}
           <View style={[styles.card, styles.cardFullWidth]}>
-            <Text style={styles.cardTitle}>🏆 Top dịch vụ được sử dụng nhiều nhất</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <Ionicons name="trophy-outline" size={18} color="#D97706" />
+              <Text style={styles.cardTitle}>Top dịch vụ được sử dụng nhiều nhất</Text>
+            </View>
             <Text style={styles.cardSubtitle}>Các dịch vụ thú y có số lượt đăng ký cao nhất</Text>
             {topServices.length > 0 ? (
               <View style={styles.servicesGrid}>

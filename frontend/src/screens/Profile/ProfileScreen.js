@@ -1,15 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
 
 const ROLE_DISPLAY = {
-  admin: { label: 'Quản trị viên hệ thống', bg: '#FEF3C7', color: '#B45309', icon: '🛡️' },
-  doctor: { label: 'Bác sĩ chuyên khoa', bg: '#E0F2FE', color: '#0369A1', icon: '🩺' },
-  pharmacist: { label: 'Dược sĩ quầy thuốc', bg: '#EDE9FE', color: '#6D28D9', icon: '💊' },
-  customer: { label: 'Khách hàng thành viên', bg: '#E6FFFA', color: '#0F766E', icon: '🐾' },
+  admin: { label: 'Quản trị viên hệ thống', bg: '#FEF3C7', color: '#B45309' },
+  doctor: { label: 'Bác sĩ chuyên khoa', bg: '#E0F2FE', color: '#0369A1' },
+  pharmacist: { label: 'Dược sĩ quầy thuốc', bg: '#EDE9FE', color: '#6D28D9' },
+  customer: { label: 'Khách hàng thành viên', bg: '#E6FFFA', color: '#0F766E' },
+};
+
+const renderRoleIcon = (role) => {
+  switch (role) {
+    case 'admin':
+      return <Ionicons name="shield-checkmark" size={36} color="#B45309" />;
+    case 'doctor':
+      return <FontAwesome5 name="user-md" size={34} color="#0369A1" />;
+    case 'pharmacist':
+      return <MaterialCommunityIcons name="pill" size={38} color="#6D28D9" />;
+    case 'customer':
+      return <FontAwesome5 name="paw" size={32} color="#0F766E" />;
+    default:
+      return <Ionicons name="person" size={36} color={COLORS.primary} />;
+  }
 };
 
 export default function ProfileScreen({ onLogout }) {
@@ -31,7 +47,10 @@ export default function ProfileScreen({ onLogout }) {
     <ResponsiveContainer style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.title}>Tài Khoản Cá Nhân 👤</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={styles.title}>Tài Khoản Cá Nhân</Text>
+            <Ionicons name="person-circle-outline" size={26} color={COLORS.primary} />
+          </View>
           <Text style={styles.subtitle}>Quản lý thông tin hồ sơ và hỗ trợ bệnh viện</Text>
         </View>
 
@@ -39,7 +58,7 @@ export default function ProfileScreen({ onLogout }) {
           {/* Card Thông tin người dùng */}
           <View style={[styles.profileCard, isTabletOrDesktop && styles.profileCardDesktop]}>
             <View style={styles.avatar}>
-              <Text style={{ fontSize: 36 }}>{roleMeta.icon}</Text>
+              {renderRoleIcon(user?.role)}
             </View>
             <Text style={styles.name}>{user?.full_name || 'Người dùng'}</Text>
             <Text style={styles.email}>{user?.email}</Text>
@@ -61,16 +80,22 @@ export default function ProfileScreen({ onLogout }) {
             </View>
 
             <TouchableOpacity style={styles.btnLogout} onPress={handleLogout} activeOpacity={0.8}>
-              <Text style={styles.logoutText}>🚪 Đăng Xuất Khỏi Thiết Bị</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <Ionicons name="log-out-outline" size={18} color="#B91C1C" />
+                <Text style={styles.logoutText}>Đăng Xuất Khỏi Thiết Bị</Text>
+              </View>
             </TouchableOpacity>
           </View>
 
           {/* Card Thông tin Bệnh viện & Trợ giúp */}
           <View style={[styles.supportCard, isTabletOrDesktop && styles.supportCardDesktop]}>
-            <Text style={styles.supportTitle}>🏥 Bệnh Viện Thú Y PetCare</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <FontAwesome5 name="hospital" size={18} color={COLORS.primaryDark} />
+              <Text style={styles.supportTitle}>Bệnh Viện Thú Y PetCare</Text>
+            </View>
             
             <View style={styles.supportItem}>
-              <Text style={styles.supportIcon}>📍</Text>
+              <Ionicons name="location-outline" size={20} color={COLORS.primary} style={{ marginTop: 2 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.supportLabel}>Địa chỉ:</Text>
                 <Text style={styles.supportValue}>Tòa nhà PetCare, Khu Công Nghệ Cao, TP.HCM</Text>
@@ -78,7 +103,7 @@ export default function ProfileScreen({ onLogout }) {
             </View>
 
             <View style={styles.supportItem}>
-              <Text style={styles.supportIcon}>⏰</Text>
+              <Ionicons name="time-outline" size={20} color={COLORS.primary} style={{ marginTop: 2 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.supportLabel}>Giờ hoạt động:</Text>
                 <Text style={styles.supportValue}>08:00 - 20:00 (Thứ 2 - Chủ Nhật)</Text>
@@ -86,7 +111,7 @@ export default function ProfileScreen({ onLogout }) {
             </View>
 
             <View style={styles.supportItem}>
-              <Text style={styles.supportIcon}>📞</Text>
+              <Ionicons name="call-outline" size={20} color={COLORS.primary} style={{ marginTop: 2 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.supportLabel}>Hotline cấp cứu 24/7:</Text>
                 <Text style={[styles.supportValue, { color: COLORS.primaryDark, fontWeight: 'bold' }]}>1900 8888 (Miễn phí)</Text>
@@ -94,7 +119,7 @@ export default function ProfileScreen({ onLogout }) {
             </View>
 
             <View style={styles.supportItem}>
-              <Text style={styles.supportIcon}>🤖</Text>
+              <MaterialCommunityIcons name="robot" size={20} color={COLORS.primary} style={{ marginTop: 2 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.supportLabel}>Trợ lý AI Gemini:</Text>
                 <Text style={styles.supportValue}>Tư vấn sơ bộ triệu chứng có kiểm chứng RAG</Text>

@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
+import { FontAwesome5 } from '@expo/vector-icons';
 import { loginApi } from '../../api/authApi';
 
 export default function LoginScreen({ navigation, onLoginSuccess }) {
@@ -32,7 +33,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }) {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
           <View style={styles.brandBadge}>
-            <Text style={styles.brandIcon}>🐾</Text>
+            <FontAwesome5 name="paw" size={30} color={COLORS.primary} />
           </View>
           <Text style={styles.title}>PetCare Hospital</Text>
           <Text style={styles.subtitle}>Hệ thống chăm sóc thú cưng & đặt lịch khám thông minh</Text>

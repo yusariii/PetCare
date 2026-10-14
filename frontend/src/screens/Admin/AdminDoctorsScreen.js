@@ -15,6 +15,7 @@ import {
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
+import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import {
   listDoctorsApi,
   createDoctorApi,
@@ -113,6 +114,19 @@ export default function AdminDoctorsScreen() {
     }
   };
 
+  const roleTabs = [
+    {
+      value: 'doctor',
+      label: 'Bác sĩ',
+      icon: (color) => <FontAwesome5 name="stethoscope" size={13} color={color} />,
+    },
+    {
+      value: 'pharmacist',
+      label: 'Dược sĩ',
+      icon: (color) => <MaterialCommunityIcons name="pill" size={15} color={color} />,
+    },
+  ];
+
   return (
     <ResponsiveContainer style={styles.container}>
       <ScrollView
@@ -123,7 +137,10 @@ export default function AdminDoctorsScreen() {
         <View style={styles.header}>
           <View style={styles.headerTitleWrap}>
             <Text style={styles.eyebrow}>QUẢN TRỊ BỆNH VIỆN</Text>
-            <Text style={styles.title}>Đội Ngũ Y Tế 👨‍⚕️👩‍⚕️</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 }}>
+              <Text style={styles.title}>Đội Ngũ Y Tế</Text>
+              <FontAwesome5 name="user-md" size={24} color={COLORS.primary} />
+            </View>
             <Text style={styles.subtitle}>
               {isDoctorTab
                 ? 'Quản lý tài khoản bác sĩ, phân công phòng chuyên khoa và trạng thái hoạt động.'
@@ -134,15 +151,22 @@ export default function AdminDoctorsScreen() {
 
         <View style={styles.toolbar}>
           <View style={styles.segment}>
-            {[['doctor', '🩺 Bác sĩ'], ['pharmacist', '💊 Dược sĩ']].map(([value, label]) => (
-              <TouchableOpacity
-                key={value}
-                style={[styles.segmentButton, staffRole === value && styles.segmentButtonSelected]}
-                onPress={() => setStaffRole(value)}
-              >
-                <Text style={staffRole === value ? styles.segmentTextSelected : styles.segmentText}>{label}</Text>
-              </TouchableOpacity>
-            ))}
+            {roleTabs.map(({ value, label, icon }) => {
+              const isSelected = staffRole === value;
+              const textColor = isSelected ? '#fff' : COLORS.textSecondary;
+              return (
+                <TouchableOpacity
+                  key={value}
+                  style={[styles.segmentButton, isSelected && styles.segmentButtonSelected]}
+                  onPress={() => setStaffRole(value)}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {icon(textColor)}
+                    <Text style={isSelected ? styles.segmentTextSelected : styles.segmentText}>{label}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <TouchableOpacity style={styles.addButton} onPress={() => setCreateVisible(true)}>
@@ -154,7 +178,7 @@ export default function AdminDoctorsScreen() {
           <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
         ) : doctors.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>👥</Text>
+            <Ionicons name="people-outline" size={44} color={COLORS.textTertiary || '#94A3B8'} style={{ marginBottom: 12 }} />
             <Text style={styles.empty}>Chưa có {roleLabel} nào trong hệ thống.</Text>
           </View>
         ) : (
@@ -193,8 +217,14 @@ export default function AdminDoctorsScreen() {
                   </View>
 
                   <View style={styles.contactBox}>
-                    <Text style={styles.detail}>📧 {doctor.email}</Text>
-                    <Text style={styles.detail}>📞 {doctor.phone || 'Chưa cập nhật số điện thoại'}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <Ionicons name="mail-outline" size={13} color={COLORS.textSecondary} />
+                      <Text style={styles.detail}>{doctor.email}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="call-outline" size={13} color={COLORS.textSecondary} />
+                      <Text style={styles.detail}>{doctor.phone || 'Chưa cập nhật số điện thoại'}</Text>
+                    </View>
                   </View>
 
                   {isDoctorTab && (
@@ -203,7 +233,10 @@ export default function AdminDoctorsScreen() {
                         <View style={styles.roomRow}>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.roomLabel}>Phòng khám phụ trách:</Text>
-                            <Text style={styles.roomText}>🏥 {doctor.room_code} - {doctor.room_name}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                              <FontAwesome5 name="hospital" size={12} color={COLORS.primary} />
+                              <Text style={styles.roomText}>{doctor.room_code} - {doctor.room_name}</Text>
+                            </View>
                           </View>
                           <TouchableOpacity style={styles.unassignButton} onPress={() => unassignRoom(doctor.room_id)}>
                             <Text style={styles.unassignText}>Gỡ phòng</Text>
@@ -211,7 +244,10 @@ export default function AdminDoctorsScreen() {
                         </View>
                       ) : (
                         <View style={styles.unassignedWrap}>
-                          <Text style={styles.unassignedWarning}>⚠️ Chưa được gán phòng khám</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Ionicons name="warning-outline" size={14} color={COLORS.warning} />
+                            <Text style={styles.unassignedWarning}>Chưa được gán phòng khám</Text>
+                          </View>
                           <TouchableOpacity style={styles.assignButton} onPress={() => setAssignPickerFor(doctor.id)}>
                             <Text style={styles.assignButtonText}>+ Phân công phòng</Text>
                           </TouchableOpacity>
@@ -236,7 +272,7 @@ export default function AdminDoctorsScreen() {
                 <Text style={styles.modalSubtitle}>Cấp tài khoản đăng nhập hệ thống</Text>
               </View>
               <TouchableOpacity style={styles.closeBtn} onPress={() => setCreateVisible(false)}>
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalScroll}>
@@ -286,7 +322,7 @@ export default function AdminDoctorsScreen() {
                 <Text style={styles.modalSubtitle}>Chọn phòng khám đang còn trống cho bác sĩ</Text>
               </View>
               <TouchableOpacity style={styles.closeBtn} onPress={() => setAssignPickerFor(null)}>
-                <Text style={styles.closeBtnText}>✕</Text>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalScroll}>

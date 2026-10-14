@@ -9,6 +9,7 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
+import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
@@ -97,21 +98,24 @@ export default function AIChatScreen({ navigation }) {
         switch (level) {
             case 'high':
                 return {
-                    text: '🚨 NGUY CẤP — Cần đưa bé đi khám ngay lập tức',
+                    text: 'NGUY CẤP — Cần đưa bé đi khám ngay lập tức',
+                    icon: 'warning',
                     bg: '#FEE2E2',
                     textColor: '#B91C1C',
                     borderColor: '#EF4444',
                 };
             case 'medium':
                 return {
-                    text: '⚠️ CẢNH BÁO — Cần theo dõi sát & đặt lịch sớm',
+                    text: 'CẢNH BÁO — Cần theo dõi sát & đặt lịch sớm',
+                    icon: 'alert-circle',
                     bg: '#FEF3C7',
                     textColor: '#B45309',
                     borderColor: '#F59E0B',
                 };
             default:
                 return {
-                    text: '✅ MỨC ĐỘ NHẸ — Có thể tự chăm sóc & theo dõi tại nhà',
+                    text: 'MỨC ĐỘ NHẸ — Có thể tự chăm sóc & theo dõi tại nhà',
+                    icon: 'checkmark-circle',
                     bg: '#D1FAE5',
                     textColor: '#047857',
                     borderColor: '#10B981',
@@ -133,7 +137,7 @@ export default function AIChatScreen({ navigation }) {
                 {/* Header */}
                 <View style={styles.header}>
                     <View>
-                        <Text style={styles.title}>Bác Sĩ Thú Y AI 🩺</Text>
+                        <Text style={styles.title}>Bác Sĩ Thú Y AI</Text>
                         <Text style={styles.subtitle}>
                             Tư vấn sơ bộ triệu chứng có kiểm chứng (RAG) dựa trên tài liệu y khoa từ các bác sĩ chuyên khoa
                         </Text>
@@ -147,7 +151,10 @@ export default function AIChatScreen({ navigation }) {
                     <View style={[styles.leftColumn, isTabletOrDesktop && styles.leftColumnDesktop]}>
                         {/* Thẻ Chọn Bé */}
                         <View style={styles.cardSection}>
-                            <Text style={styles.cardSectionTitle}>🐾 Chọn bé cưng cần tư vấn</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                                <FontAwesome5 name="paw" size={14} color={COLORS.primary} style={{ marginRight: 6 }} />
+                                <Text style={styles.cardSectionTitle}>Chọn bé cưng cần tư vấn</Text>
+                            </View>
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.petPicker}>
                                 {pets.map((p) => {
                                     const isSelected = selectedPet?.id === p.id;
@@ -158,7 +165,11 @@ export default function AIChatScreen({ navigation }) {
                                             onPress={() => setSelectedPet(p)}
                                             activeOpacity={0.7}
                                         >
-                                            <Text style={styles.petChipIcon}>{p.species === 'dog' ? '🐶' : '🐱'}</Text>
+                                            <FontAwesome5
+                                                name={p.species === 'dog' ? 'dog' : 'cat'}
+                                                size={14}
+                                                color={isSelected ? COLORS.primaryDark : COLORS.textSecondary}
+                                            />
                                             <Text style={[styles.petChipName, isSelected && styles.petChipNameActive]}>
                                                 {p.name}
                                             </Text>
@@ -194,7 +205,10 @@ export default function AIChatScreen({ navigation }) {
 
                         {/* Thẻ Gợi Ý Triệu Chứng Phổ Biến */}
                         <View style={styles.cardSection}>
-                            <Text style={styles.cardSectionTitle}>💡 Triệu chứng gợi ý nhanh</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                                <Ionicons name="bulb-outline" size={16} color={COLORS.primary} style={{ marginRight: 6 }} />
+                                <Text style={styles.cardSectionTitle}>Triệu chứng gợi ý nhanh</Text>
+                            </View>
                             <Text style={styles.cardSectionSubtitle}>Nhấn để tự động điền vào khung mô tả:</Text>
                             <View style={styles.quickPromptsList}>
                                 {QUICK_PROMPTS.map((item, idx) => (
@@ -215,7 +229,10 @@ export default function AIChatScreen({ navigation }) {
                     <View style={[styles.rightColumn, isTabletOrDesktop && styles.rightColumnDesktop]}>
                         {/* Khung Nhập Triệu Chứng */}
                         <View style={styles.cardSection}>
-                            <Text style={styles.cardSectionTitle}>💬 Mô tả triệu chứng của bé</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                                <Ionicons name="chatbubbles-outline" size={16} color={COLORS.primary} style={{ marginRight: 6 }} />
+                                <Text style={styles.cardSectionTitle}>Mô tả triệu chứng của bé</Text>
+                            </View>
                             <Text style={styles.cardSectionSubtitle}>
                                 Càng chi tiết về thời gian xuất hiện, phân, nước tiểu, thói quen ăn uống... AI chẩn đoán càng chính xác:
                             </Text>
@@ -242,7 +259,10 @@ export default function AIChatScreen({ navigation }) {
                                         <Text style={styles.btnText}>Đang tra cứu tài liệu & chẩn đoán...</Text>
                                     </View>
                                 ) : (
-                                    <Text style={styles.btnText}>✨ Phân Tích Bằng Bác Sĩ AI</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Ionicons name="sparkles" size={16} color="#fff" style={{ marginRight: 6 }} />
+                                        <Text style={styles.btnText}>Phân Tích Bằng Bác Sĩ AI</Text>
+                                    </View>
                                 )}
                             </TouchableOpacity>
                         </View>
@@ -251,12 +271,16 @@ export default function AIChatScreen({ navigation }) {
                         {aiResult && (
                             <View style={styles.resultCard}>
                                 <View style={styles.resultHeader}>
-                                    <Text style={styles.resultHeaderTitle}>📋 Kết Quả Phân Tích Y Khoa</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Ionicons name="clipboard-outline" size={18} color={COLORS.text} style={{ marginRight: 6 }} />
+                                        <Text style={styles.resultHeaderTitle}>Kết Quả Phân Tích Y Khoa</Text>
+                                    </View>
                                 </View>
 
                                 {/* Urgency Banner */}
                                 {urgencyMeta && (
                                     <View style={[styles.urgencyBanner, { backgroundColor: urgencyMeta.bg, borderColor: urgencyMeta.borderColor }]}>
+                                        <Ionicons name={urgencyMeta.icon} size={16} color={urgencyMeta.textColor} style={{ marginRight: 6 }} />
                                         <Text style={[styles.urgencyBannerText, { color: urgencyMeta.textColor }]}>
                                             {urgencyMeta.text}
                                         </Text>
@@ -265,14 +289,20 @@ export default function AIChatScreen({ navigation }) {
 
                                 {/* Lời khuyên chi tiết */}
                                 <View style={styles.adviceBox}>
-                                    <Text style={styles.boxTitle}>🩺 Lời Khuyên & Hướng Xử Trí:</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                                        <FontAwesome5 name="stethoscope" size={14} color={COLORS.primary} style={{ marginRight: 6 }} />
+                                        <Text style={styles.boxTitle}>Lời Khuyên & Hướng Xử Trí:</Text>
+                                    </View>
                                     <Text style={styles.adviceText}>{aiResult.advice}</Text>
                                 </View>
 
                                 {/* Nguồn tài liệu RAG */}
                                 {aiResult.sources && aiResult.sources.length > 0 ? (
                                     <View style={styles.sourceBox}>
-                                        <Text style={styles.sourceTitle}>📚 Tài liệu y khoa tham khảo:</Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                            <Ionicons name="book-outline" size={15} color="#1E40AF" style={{ marginRight: 6 }} />
+                                            <Text style={styles.sourceTitle}>Tài liệu y khoa tham khảo:</Text>
+                                        </View>
                                         {aiResult.sources.map((s) => (
                                             <View key={s.id} style={styles.sourceItemRow}>
                                                 <Text style={styles.sourceBullet}>•</Text>
@@ -286,14 +316,14 @@ export default function AIChatScreen({ navigation }) {
                                 ) : (
                                     <View style={styles.sourceBoxWarning}>
                                         <Text style={styles.sourceWarningText}>
-                                            ⚠️ Không tìm thấy tài liệu đối sánh cụ thể trong kho tri thức. Lời khuyên trên chỉ mang tính tổng quát, vui lòng đặt lịch khám trực tiếp với bác sĩ.
+                                            Không tìm thấy tài liệu đối sánh cụ thể trong kho tri thức. Lời khuyên trên chỉ mang tính tổng quát, vui lòng đặt lịch khám trực tiếp với bác sĩ.
                                         </Text>
                                     </View>
                                 )}
 
                                 {aiResult.need_doctor && (
                                     <View style={styles.doctorAlertBox}>
-                                        <Text style={styles.doctorAlertIcon}>⚠️</Text>
+                                        <Ionicons name="alert-circle-outline" size={18} color="#991B1B" style={{ marginRight: 6 }} />
                                         <Text style={styles.doctorAlertText}>
                                             Khuyến cáo: Tình trạng của bé cần được bác sĩ chuyên khoa thăm khám trực tiếp.
                                         </Text>
@@ -303,7 +333,10 @@ export default function AIChatScreen({ navigation }) {
                                 {/* Gợi ý phòng khám */}
                                 {recommendedRoom && (
                                     <View style={styles.roomRecommendationBox}>
-                                        <Text style={styles.boxTitle}>🏥 Chuyên Khoa Đề Xuất Thăm Khám:</Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                                            <FontAwesome5 name="hospital" size={14} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                                            <Text style={styles.boxTitle}>Chuyên Khoa Đề Xuất Thăm Khám:</Text>
+                                        </View>
                                         <View style={styles.roomCardInner}>
                                             <View style={styles.roomBadge}>
                                                 <Text style={styles.roomBadgeCode}>{recommendedRoom.room_code}</Text>
@@ -328,9 +361,12 @@ export default function AIChatScreen({ navigation }) {
                                             {bookingLoading ? (
                                                 <ActivityIndicator color="#fff" />
                                             ) : (
-                                                <Text style={styles.bookRoomBtnText}>
-                                                    📅 Đặt Lịch Tại Phòng {recommendedRoom.room_code} Ngay
-                                                </Text>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                    <Ionicons name="calendar-outline" size={15} color="#fff" style={{ marginRight: 6 }} />
+                                                    <Text style={styles.bookRoomBtnText}>
+                                                        Đặt Lịch Tại Phòng {recommendedRoom.room_code} Ngay
+                                                    </Text>
+                                                </View>
                                             )}
                                         </TouchableOpacity>
                                     </View>
@@ -342,7 +378,10 @@ export default function AIChatScreen({ navigation }) {
                                     onPress={() => navigation.navigate('Booking')}
                                     activeOpacity={0.7}
                                 >
-                                    <Text style={styles.manualBookBtnText}>📅 Chuyển đến trang Đặt Lịch Tự Chọn</Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Ionicons name="calendar-outline" size={15} color={COLORS.textSecondary} style={{ marginRight: 6 }} />
+                                        <Text style={styles.manualBookBtnText}>Chuyển đến trang Đặt Lịch Tự Chọn</Text>
+                                    </View>
                                 </TouchableOpacity>
                             </View>
                         )}
@@ -414,7 +453,6 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: 'bold',
         color: COLORS.text,
-        marginBottom: 4,
     },
     cardSectionSubtitle: {
         fontSize: 12,
@@ -444,9 +482,6 @@ const styles = StyleSheet.create({
     petChipActive: {
         backgroundColor: COLORS.primaryLight,
         borderColor: COLORS.primary,
-    },
-    petChipIcon: {
-        fontSize: 18,
     },
     petChipName: {
         fontSize: 13,
@@ -557,6 +592,9 @@ const styles = StyleSheet.create({
         color: COLORS.text,
     },
     urgencyBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
         paddingVertical: 10,
         paddingHorizontal: 14,
         borderRadius: 10,
@@ -572,7 +610,6 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: 'bold',
         color: COLORS.text,
-        marginBottom: 8,
     },
     adviceBox: {
         backgroundColor: COLORS.surfaceSubtle,
@@ -597,7 +634,6 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: 'bold',
         color: '#1E40AF',
-        marginBottom: 6,
     },
     sourceItemRow: {
         flexDirection: 'row',
@@ -635,10 +671,6 @@ const styles = StyleSheet.create({
         padding: 12,
         borderRadius: 12,
         marginBottom: 16,
-        gap: 8,
-    },
-    doctorAlertIcon: {
-        fontSize: 16,
     },
     doctorAlertText: {
         fontSize: 12,
@@ -699,6 +731,7 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         borderRadius: 12,
         alignItems: 'center',
+        justifyContent: 'center',
     },
     bookRoomBtnText: {
         color: '#FFFFFF',
@@ -712,6 +745,7 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         borderRadius: 12,
         alignItems: 'center',
+        justifyContent: 'center',
     },
     manualBookBtnText: {
         color: COLORS.textSecondary,

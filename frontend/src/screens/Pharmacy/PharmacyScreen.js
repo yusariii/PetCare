@@ -12,6 +12,7 @@ import {
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
+import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { getMyPetsApi } from '../../api/petApi';
 import { getPetPrescriptionsApi, getPrescriptionDetailApi } from '../../api/prescriptionApi';
 import { createMedicineOrderApi } from '../../api/medicineOrderApi';
@@ -98,7 +99,10 @@ export default function PharmacyScreen() {
   return (
     <ResponsiveContainer style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Đơn Thuốc Của Bé 💊</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={styles.title}>Đơn Thuốc Của Bé</Text>
+          <MaterialCommunityIcons name="pill" size={24} color={COLORS.primary} />
+        </View>
         <Text style={styles.subtitle}>Xem đơn thuốc do bác sĩ kê và đặt giữ chỗ mua thuốc tại quầy viện.</Text>
       </View>
 
@@ -119,7 +123,11 @@ export default function PharmacyScreen() {
                 onPress={() => setSelectedPetId(pet.id)}
                 activeOpacity={0.7}
               >
-                <Text style={styles.petIcon}>{pet.species === 'dog' ? '🐶' : '🐱'}</Text>
+                <FontAwesome5
+                  name={pet.species === 'dog' ? 'dog' : 'cat'}
+                  size={14}
+                  color={isSelected ? COLORS.primaryDark : COLORS.textSecondary}
+                />
                 <Text style={[styles.petChipText, isSelected && styles.petChipTextSelected]}>
                   {pet.name}
                 </Text>
@@ -140,7 +148,7 @@ export default function PharmacyScreen() {
           </View>
         ) : prescriptions.length === 0 ? (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyIcon}>💊</Text>
+            <MaterialCommunityIcons name="pill" size={44} color={COLORS.textTertiary || '#94A3B8'} style={{ marginBottom: 10 }} />
             <Text style={styles.emptyTitle}>Chưa có đơn thuốc nào</Text>
             <Text style={styles.emptySubtitle}>Bé cưng của bạn hiện chưa có đơn thuốc nào được kê từ bác sĩ.</Text>
           </View>
@@ -166,7 +174,10 @@ export default function PharmacyScreen() {
                     <View style={styles.cardHeader}>
                       <View style={{ flex: 1, marginRight: 8 }}>
                         <Text style={styles.recordTitle}>{prescription.health_record_title}</Text>
-                        <Text style={styles.doctor}>👨‍⚕️ Bác sĩ: {prescription.doctor_name}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                          <FontAwesome5 name="user-md" size={13} color={COLORS.textSecondary} />
+                          <Text style={styles.doctor}>Bác sĩ: {prescription.doctor_name}</Text>
+                        </View>
                       </View>
                       <View style={styles.dateBadge}>
                         <Text style={styles.dateText}>
@@ -185,8 +196,13 @@ export default function PharmacyScreen() {
 
                     <View style={styles.expandRow}>
                       <Text style={styles.expandText}>
-                        {expanded ? 'Thu gọn đơn thuốc ▲' : 'Xem danh mục thuốc chi tiết ▼'}
+                        {expanded ? 'Thu gọn đơn thuốc' : 'Xem danh mục thuốc chi tiết'}
                       </Text>
+                      <Ionicons
+                        name={expanded ? 'chevron-up' : 'chevron-down'}
+                        size={14}
+                        color={COLORS.primaryDark}
+                      />
                     </View>
                   </TouchableOpacity>
 
@@ -200,9 +216,12 @@ export default function PharmacyScreen() {
                           {detail.items.map((item) => (
                             <View key={item.id} style={styles.itemRow}>
                               <View style={{ flex: 1 }}>
-                                <Text style={styles.itemName}>
-                                  💊 {item.medicine_name} x {item.quantity} {item.unit}
-                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                  <MaterialCommunityIcons name="pill" size={15} color={COLORS.primary} />
+                                  <Text style={styles.itemName}>
+                                    {item.medicine_name} x {item.quantity} {item.unit}
+                                  </Text>
+                                </View>
                                 <Text style={styles.itemDosage}>Liều dùng: {item.dosage}</Text>
                               </View>
                               <Text style={styles.itemPrice}>
@@ -228,14 +247,20 @@ export default function PharmacyScreen() {
                               {orderingId === prescription.id ? (
                                 <ActivityIndicator color="#fff" />
                               ) : (
-                                <Text style={styles.buyButtonText}>
-                                  🛒 Giữ chỗ mua thuốc (thanh toán tại quầy)
-                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                                  <Ionicons name="cart-outline" size={16} color="#fff" />
+                                  <Text style={styles.buyButtonText}>
+                                    Giữ chỗ mua thuốc (thanh toán tại quầy)
+                                  </Text>
+                                </View>
                               )}
                             </TouchableOpacity>
                           ) : (
                             <View style={styles.alreadyOrderedBox}>
-                              <Text style={styles.alreadyOrdered}>✓ Đã đặt giữ chỗ thành công — Vui lòng thanh toán và nhận thuốc tại quầy</Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                                <Ionicons name="checkmark-circle" size={16} color="#047857" />
+                                <Text style={styles.alreadyOrdered}>Đã đặt giữ chỗ thành công — Vui lòng thanh toán và nhận thuốc tại quầy</Text>
+                              </View>
                             </View>
                           )}
                         </>
@@ -405,6 +430,9 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: COLORS.borderLight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   expandText: {
     fontSize: 12,
