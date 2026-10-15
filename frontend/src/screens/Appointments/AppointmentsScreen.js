@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   TextInput,
   RefreshControl,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../../constants/theme';
@@ -21,6 +22,8 @@ import {
   getAllAppointmentsApi,
   updateAppointmentStatusApi,
   cancelAppointmentApi,
+  deleteCancelledAppointmentApi,
+  deleteAllCancelledAppointmentsApi,
 } from '../../api/appointmentApi';
 import { getRoomsApi } from '../../api/roomApi';
 import { createReviewApi } from '../../api/reviewApi';
@@ -33,7 +36,7 @@ const STATUS_FILTERS = [
   ['cancelled', 'Đã hủy'],
 ];
 
-export default function AppointmentsScreen({ navigation }) {
+export default function AppointmentsScreen({ navigation, route }) {
   const { isTabletOrDesktop } = useResponsive();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,11 +59,17 @@ export default function AppointmentsScreen({ navigation }) {
   const [reviewComment, setReviewComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
 
-  useEffect(() => {
-    checkUserRoleAndLoad();
-  }, []);
+  // Tự động tải lại danh sách lịch hẹn mỗi khi người dùng chuyển sang tab Lịch hẹn hoặc navigate tới
+  useFocusEffect(
+    useCallback(() => {
+      if (route?.params?.refresh) {
+        setStatusFilter('all');
+      }
+      checkUserRoleAndLoad(appointments.length === 0);
+    }, [statusFilter, roomFilter, dateFilter, route?.params?.refresh])
+  );
 
-  const checkUserRoleAndLoad = async () => {
+  const checkUserRoleAndLoad = async (showLoading = true) => {
     try {
       const userStr = await AsyncStorage.getItem('user');
       if (userStr) {
@@ -75,15 +84,15 @@ export default function AppointmentsScreen({ navigation }) {
           }
         }
       }
-      await loadAppointments();
+      await loadAppointments(showLoading);
     } catch (err) {
       console.error('INIT_APPOINTMENTS_ERROR:', err);
     }
   };
 
-  const loadAppointments = async () => {
+  const loadAppointments = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       setError('');
 
       const userStr = await AsyncStorage.getItem('user');
@@ -113,13 +122,13 @@ export default function AppointmentsScreen({ navigation }) {
       console.error('LOAD_APPOINTMENTS_ERROR:', err);
       setError(err.response?.data?.message || 'Lỗi khi tải lịch hẹn');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadAppointments();
+    await loadAppointments(false);
     setRefreshing(false);
   };
 
@@ -145,6 +154,66 @@ export default function AppointmentsScreen({ navigation }) {
               Alert.alert('Lỗi', err.response?.data?.message || 'Không thể hủy lịch hẹn');
             } finally {
               setUpdatingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteCancelledAppointment = (appointmentId) => {
+    Alert.alert(
+      'Xóa lịch đã hủy',
+      'Bạn có chắc chắn muốn xóa lịch hẹn này khỏi danh sách không? Thao tác này không thể hoàn tác.',
+      [
+        { text: 'Không', style: 'cancel' },
+        {
+          text: 'Xóa vĩnh viễn',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setUpdatingId(appointmentId);
+              const response = await deleteCancelledAppointmentApi(appointmentId);
+              if (response.data.success) {
+                Alert.alert('Thành công', 'Đã xóa lịch hẹn khỏi danh sách');
+                await loadAppointments(false);
+                setShowDetail(false);
+              }
+            } catch (err) {
+              Alert.alert('Lỗi', err.response?.data?.message || 'Không thể xóa lịch hẹn');
+            } finally {
+              setUpdatingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAllCancelledAppointments = () => {
+    const cancelledCount = appointments.filter((a) => a.status === 'cancelled').length;
+    if (cancelledCount === 0) return;
+
+    Alert.alert(
+      'Xóa tất cả lịch đã hủy',
+      `Bạn có chắc chắn muốn xóa toàn bộ ${cancelledCount} lịch hẹn đã hủy không? Thao tác này không thể hoàn tác.`,
+      [
+        { text: 'Không', style: 'cancel' },
+        {
+          text: 'Xóa tất cả',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const response = await deleteAllCancelledAppointmentsApi();
+              if (response.data.success) {
+                Alert.alert('Thành công', `Đã xóa ${cancelledCount} lịch hẹn đã hủy thành công`);
+                await loadAppointments(false);
+              }
+            } catch (err) {
+              Alert.alert('Lỗi', err.response?.data?.message || 'Không thể xóa các lịch hẹn đã hủy');
+            } finally {
+              setLoading(false);
             }
           },
         },
@@ -331,6 +400,24 @@ export default function AppointmentsScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
         >
+          {statusFilter === 'cancelled' && filteredAppointments.length > 0 && (
+            <View style={styles.cleanupBar}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="trash-bin-outline" size={16} color="#B91C1C" />
+                <Text style={styles.cleanupText}>
+                  Có {filteredAppointments.length} lịch hẹn đã hủy
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.cleanupBtn}
+                onPress={handleDeleteAllCancelledAppointments}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.cleanupBtnText}>Xóa tất cả</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           <View style={[styles.appointmentGrid, isTabletOrDesktop && styles.appointmentGridDesktop]}>
             {filteredAppointments.map((apt) => {
               const badge = getStatusBadgeMeta(apt.status);
@@ -411,6 +498,23 @@ export default function AppointmentsScreen({ navigation }) {
                       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <Ionicons name="close-circle-outline" size={14} color="#B91C1C" style={{ marginRight: 4 }} />
                         <Text style={styles.cancelButtonText}>Hủy lịch hẹn</Text>
+                      </View>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Delete cancelled appointment action */}
+                  {apt.status === 'cancelled' && (
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleDeleteCancelledAppointment(apt.id);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Ionicons name="trash-outline" size={14} color="#EF4444" style={{ marginRight: 4 }} />
+                        <Text style={styles.deleteButtonText}>Xóa khỏi danh sách</Text>
                       </View>
                     </TouchableOpacity>
                   )}
@@ -588,6 +692,26 @@ export default function AppointmentsScreen({ navigation }) {
                         )}
                       </TouchableOpacity>
                     )}
+                  </View>
+                )}
+
+                {/* Xóa lịch đã hủy trong modal */}
+                {selectedAppointment.status === 'cancelled' && (
+                  <View style={styles.modalActionButtons}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.deleteActionButton]}
+                      onPress={() => handleDeleteCancelledAppointment(selectedAppointment.id)}
+                      disabled={updatingId !== null}
+                    >
+                      {updatingId === selectedAppointment.id ? (
+                        <ActivityIndicator color="#EF4444" />
+                      ) : (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Ionicons name="trash-outline" size={16} color="#EF4444" style={{ marginRight: 6 }} />
+                          <Text style={[styles.actionButtonText, { color: '#EF4444' }]}>Xóa Lịch Hẹn Đã Hủy Này</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
                   </View>
                 )}
 
@@ -1028,5 +1152,53 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     textAlignVertical: 'top',
     marginBottom: 12,
+  },
+  deleteButton: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  deleteButtonText: {
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  deleteActionButton: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  cleanupBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 14,
+  },
+  cleanupText: {
+    color: '#991B1B',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  cleanupBtn: {
+    backgroundColor: '#EF4444',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  cleanupBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

@@ -2,6 +2,23 @@ const db = require('../config/db');
 const { getOwnRoomId } = require('../utils/doctorScope');
 
 /**
+ * Chuẩn hoá thời gian về chuỗi giờ địa phương "YYYY-MM-DD HH:mm:ss" để lưu vào cột DATETIME.
+ * - "2026-10-16 08:00:00" / "2026-10-16T08:00" (không có múi giờ) => giữ nguyên giờ 08:00
+ * - "2026-10-16T01:00:00.000Z" (ISO UTC từ client cũ) => quy đổi về giờ địa phương 08:00
+ * MySQL/MariaDB sẽ cắt bỏ hậu tố "Z" nếu lưu trực tiếp chuỗi ISO, gây lệch múi giờ.
+ */
+const toLocalDbDatetime = (value) => {
+  if (!value) return null;
+  const normalized = typeof value === 'string' && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(value)
+    ? value.trim().replace(' ', 'T')
+    : value;
+  const d = new Date(normalized);
+  if (Number.isNaN(d.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+};
+
+/**
  * Get all services
  * GET /api/appointments/services
  */
@@ -36,9 +53,9 @@ exports.createAppointment = async (req, res) => {
       service_id,
       service_ids,
       room_id,
-      appointment_datetime,
       notes
     } = req.body;
+    const appointment_datetime = toLocalDbDatetime(req.body.appointment_datetime);
 
     const serviceIds = Array.isArray(service_ids)
       ? [...new Set(service_ids.map(Number).filter(Number.isInteger))]
@@ -54,7 +71,7 @@ exports.createAppointment = async (req, res) => {
     }
 
     // BR02: Check if appointment time is at least 60 minutes in the future
-    const appointmentTime = new Date(appointment_datetime);
+    const appointmentTime = new Date(appointment_datetime.replace(' ', 'T'));
     const now = new Date();
     const minBookingTime = new Date(now.getTime() + 60 * 60 * 1000);
 
@@ -489,6 +506,99 @@ exports.cancelAppointment = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Lỗi khi hủy lịch hẹn. Vui lòng thử lại sau.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+/**
+ * Xóa vĩnh viễn 1 lịch hẹn đã bị hủy
+ * DELETE /api/appointments/cancelled/:id
+ * Chỉ áp dụng cho lịch có status = 'cancelled'
+ */
+exports.deleteCancelledAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [appointments] = await db.query(
+      'SELECT user_id, status FROM Appointments WHERE id = ?',
+      [id]
+    );
+
+    if (appointments.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy lịch hẹn'
+      });
+    }
+
+    const appointment = appointments[0];
+
+    // Kiểm tra quyền
+    if (req.user.role === 'customer' && appointment.user_id !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền xóa lịch hẹn này'
+      });
+    }
+
+    // Chỉ cho phép xóa lịch đã bị hủy
+    if (appointment.status !== 'cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: 'Chỉ có thể xóa các lịch hẹn đã ở trạng thái "Đã hủy"'
+      });
+    }
+
+    await db.query('DELETE FROM Appointments WHERE id = ?', [id]);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Đã xóa lịch hẹn đã hủy thành công'
+    });
+  } catch (error) {
+    console.error('DELETE_CANCELLED_APPOINTMENT_ERROR:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xóa lịch hẹn. Vui lòng thử lại sau.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+/**
+ * Xóa tất cả các lịch hẹn đã bị hủy của người dùng
+ * DELETE /api/appointments/cancelled/all
+ */
+exports.deleteAllCancelledAppointments = async (req, res) => {
+  try {
+    let result;
+    if (req.user.role === 'customer') {
+      [result] = await db.query(
+        'DELETE FROM Appointments WHERE user_id = ? AND status = "cancelled"',
+        [req.user.id]
+      );
+    } else if (req.user.role === 'admin') {
+      [result] = await db.query(
+        'DELETE FROM Appointments WHERE status = "cancelled"'
+      );
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: 'Bạn không có quyền thực hiện thao tác này'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Đã xóa ${result.affectedRows} lịch hẹn đã hủy thành công`,
+      data: { deletedCount: result.affectedRows }
+    });
+  } catch (error) {
+    console.error('DELETE_ALL_CANCELLED_APPOINTMENTS_ERROR:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi xóa các lịch hẹn đã hủy. Vui lòng thử lại sau.',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

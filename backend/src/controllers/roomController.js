@@ -87,28 +87,26 @@ exports.getRoomAvailability = async (req, res) => {
     // Lấy các lịch hẹn của ngày đó
     const [appointments] = await db.query(`
       SELECT 
-        appointment_datetime,
+        HOUR(appointment_datetime) as hour_slot,
         COUNT(*) as booked_count
       FROM Appointments
       WHERE room_id = ? 
         AND DATE(appointment_datetime) = ?
         AND status != 'cancelled'
-      GROUP BY DATE(appointment_datetime), HOUR(appointment_datetime)
-      ORDER BY appointment_datetime
+      GROUP BY HOUR(appointment_datetime)
+      ORDER BY hour_slot
     `, [id, date]);
 
-    // Tính toán các slot trống
+    // Tính toán các slot trống (theo giờ địa phương lưu trong DB)
     const bookedMap = {};
     appointments.forEach(apt => {
-      const hour = new Date(apt.appointment_datetime).toISOString().slice(0, 13);
-      bookedMap[hour] = apt.booked_count;
+      bookedMap[Number(apt.hour_slot)] = Number(apt.booked_count);
     });
 
     const availableSlots = [];
     for (let hour = 8; hour < 18; hour++) {
       const hourStr = hour.toString().padStart(2, '0');
-      const slotKey = `${date}T${hourStr}`;
-      const booked = bookedMap[slotKey] || 0;
+      const booked = bookedMap[hour] || 0;
       const available = Math.max(0, room.max_slot_per_hour - booked);
       
       availableSlots.push({

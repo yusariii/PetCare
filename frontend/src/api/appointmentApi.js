@@ -48,3 +48,17 @@ export const getHospitalAnalyticsApi = async () => {
 export const cancelAppointmentApi = async (appointmentId) => {
   return client.delete(`/appointments/${appointmentId}`);
 };
+
+/**
+ * Xóa vĩnh viễn 1 lịch hẹn đã hủy
+ */
+export const deleteCancelledAppointmentApi = async (appointmentId) => {
+  return client.delete(`/appointments/cancelled/${appointmentId}`);
+};
+
+/**
+ * Xóa tất cả lịch hẹn đã hủy của người dùng
+ */
+export const deleteAllCancelledAppointmentsApi = async () => {
+  return client.delete('/appointments/cancelled/all');
+};

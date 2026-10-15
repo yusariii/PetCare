@@ -18,6 +18,8 @@ router.use(verifyToken);
  */
 router.get('/my', appointmentController.getMyAppointments);
 router.post('/', requireRole('customer'), appointmentController.createAppointment);
+router.delete('/cancelled/all', appointmentController.deleteAllCancelledAppointments);
+router.delete('/cancelled/:id', appointmentController.deleteCancelledAppointment);
 router.delete('/:id', appointmentController.cancelAppointment);
 
 /**
