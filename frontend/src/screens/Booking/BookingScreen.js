@@ -20,6 +20,22 @@ import { getRoomsApi, getRoomServicesApi, getRoomAvailabilityApi } from '../../a
 import { getMyPetsApi } from '../../api/petApi';
 import { createAppointmentApi } from '../../api/appointmentApi';
 
+const getSpeciesLabel = (species) => {
+  if (!species) return 'Khác';
+  const s = species.toLowerCase();
+  if (s === 'dog' || s.includes('chó')) return 'Chó';
+  if (s === 'cat' || s.includes('mèo')) return 'Mèo';
+  return 'Khác';
+};
+
+const getSpeciesIcon = (species) => {
+  if (!species) return 'paw';
+  const s = species.toLowerCase();
+  if (s === 'dog' || s.includes('chó')) return 'dog';
+  if (s === 'cat' || s.includes('mèo')) return 'cat';
+  return 'paw';
+};
+
 export default function BookingScreen({ route, navigation }) {
   const { isTabletOrDesktop } = useResponsive();
 
@@ -42,6 +58,7 @@ export default function BookingScreen({ route, navigation }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [bookingError, setBookingError] = useState('');
+  const [bookingSuccess, setBookingSuccess] = useState('');
   const [showRoomPicker, setShowRoomPicker] = useState(false);
   const [showPetPicker, setShowPetPicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -62,8 +79,27 @@ export default function BookingScreen({ route, navigation }) {
     }
   }, [selectedRoom, selectedDate]);
 
+  const refreshPets = async () => {
+    try {
+      const petsRes = await getMyPetsApi();
+      if (petsRes.data.success) {
+        const petList = petsRes.data.data || [];
+        setPets(petList);
+        setSelectedPet((prev) => {
+          if (prev && petList.some((p) => p.id === prev)) {
+            return prev;
+          }
+          return petList.length > 0 ? petList[0].id : null;
+        });
+      }
+    } catch (e) {
+      console.error('REFRESH_PETS_ERROR:', e);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
+      refreshPets();
       if (selectedRoom && selectedDate) {
         loadAvailability(selectedRoom, selectedDate);
       }
@@ -93,10 +129,14 @@ export default function BookingScreen({ route, navigation }) {
       }
 
       if (petsRes.data.success) {
-        setPets(petsRes.data.data || []);
-        if (petsRes.data.data?.length > 0) {
-          setSelectedPet(petsRes.data.data[0].id);
-        }
+        const petList = petsRes.data.data || [];
+        setPets(petList);
+        setSelectedPet((prev) => {
+          if (prev && petList.some((p) => p.id === prev)) {
+            return prev;
+          }
+          return petList.length > 0 ? petList[0].id : null;
+        });
       }
     } catch (err) {
       console.error('LOAD_INITIAL_DATA_ERROR:', err);
@@ -138,7 +178,7 @@ export default function BookingScreen({ route, navigation }) {
       const date = new Date();
       date.setDate(date.getDate() + i);
       days.push({
-        date: date.toISOString().split('T')[0],
+        date: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
         label: date.toLocaleDateString('vi-VN', { weekday: 'short', month: '2-digit', day: '2-digit' }),
         fullLabel: date.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }),
       });
@@ -155,8 +195,11 @@ export default function BookingScreen({ route, navigation }) {
     try {
       setSubmitting(true);
       setBookingError('');
+      setBookingSuccess('');
 
-      const appointmentDatetime = new Date(`${selectedDate}T${selectedTime}:00`).toISOString();
+      // Gửi đúng giờ địa phương mà người dùng chọn (không quy đổi sang UTC),
+      // vì cột DATETIME của MySQL/MariaDB không lưu múi giờ.
+      const appointmentDatetime = `${selectedDate} ${selectedTime}:00`;
 
       const response = await createAppointmentApi({
         pet_id: selectedPet,
@@ -167,14 +210,24 @@ export default function BookingScreen({ route, navigation }) {
       });
 
       if (response.data.success) {
-        Alert.alert('Thành công', 'Lịch hẹn đã được đặt thành công! Bạn có thể theo dõi tiến độ ở mục Lịch Hẹn.', [
-          {
-            text: 'Xem lịch hẹn',
-            onPress: () => navigation.navigate('Appointments')
-          },
+        const bookedSummary = `${selectedTime} ngày ${selectedDate.split('-').reverse().join('/')}`;
+
+        // Reset form (giữ lại phòng khám & thú cưng để đặt lịch tiếp cho tiện)
+        setSelectedServices([]);
+        setSelectedDate(null);
+        setSelectedTime(null);
+        setNotes('');
+        setAvailability([]);
+        setBookingSuccess(`Đặt lịch thành công lúc ${bookedSummary}. Lịch hẹn đang chờ phòng khám xác nhận.`);
+
+        Alert.alert('Đặt lịch thành công', `Lịch hẹn lúc ${bookedSummary} đã được ghi nhận.\n\nBạn có muốn chuyển sang mục Lịch hẹn để theo dõi không?`, [
           {
             text: 'Đặt lịch khác',
             style: 'cancel'
+          },
+          {
+            text: 'Xem lịch hẹn',
+            onPress: () => navigation.navigate('Appointments', { refresh: Date.now() })
           }
         ]);
       }
@@ -239,14 +292,19 @@ export default function BookingScreen({ route, navigation }) {
                 activeOpacity={0.7}
               >
                 <View style={styles.pickerButtonContent}>
-                  <FontAwesome5 name="paw" size={18} color={COLORS.primary} style={{ marginRight: 10 }} />
+                  <FontAwesome5
+                    name={selectedPetObj ? getSpeciesIcon(selectedPetObj.species) : 'paw'}
+                    size={18}
+                    color={COLORS.primary}
+                    style={{ marginRight: 10 }}
+                  />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.pickerButtonText}>
                       {selectedPetObj ? selectedPetObj.name : 'Chọn bé cưng của bạn'}
                     </Text>
                     {selectedPetObj && (
                       <Text style={styles.pickerSubText}>
-                        Loài: {selectedPetObj.species === 'dog' ? 'Chó' : 'Mèo'} • {selectedPetObj.breed || 'Chưa rõ giống'}
+                        Loài: {getSpeciesLabel(selectedPetObj.species)} • {selectedPetObj.breed || 'Chưa rõ giống'}
                       </Text>
                     )}
                   </View>
@@ -443,6 +501,21 @@ export default function BookingScreen({ route, navigation }) {
               </View>
             ) : null}
 
+            {bookingSuccess ? (
+              <View style={styles.successBox}>
+                <Ionicons name="checkmark-circle" size={20} color="#047857" style={{ marginRight: 8 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.successText}>{bookingSuccess}</Text>
+                  <TouchableOpacity onPress={() => navigation.navigate('Appointments', { refresh: Date.now() })}>
+                    <Text style={styles.successLink}>Xem lịch hẹn của tôi →</Text>
+                  </TouchableOpacity>
+                </View>
+                <TouchableOpacity onPress={() => setBookingSuccess('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close" size={18} color="#047857" />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             {/* SUMMARY CARD (Tóm Tắt Lịch Hẹn) */}
             <View style={styles.summaryCard}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
@@ -452,7 +525,9 @@ export default function BookingScreen({ route, navigation }) {
               
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Bé cưng:</Text>
-                <Text style={styles.summaryValue}>{selectedPetObj ? selectedPetObj.name : '—'}</Text>
+                <Text style={styles.summaryValue}>
+                  {selectedPetObj ? `${selectedPetObj.name} (${getSpeciesLabel(selectedPetObj.species)})` : '—'}
+                </Text>
               </View>
 
               <View style={styles.summaryRow}>
@@ -525,13 +600,21 @@ export default function BookingScreen({ route, navigation }) {
                     setShowPetPicker(false);
                   }}
                 >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.pickerItemText, selectedPet === item.id && styles.pickerItemTextActive]}>
-                      {item.name}
-                    </Text>
-                    <Text style={styles.pickerItemSub}>
-                      Loài: {item.species === 'dog' ? 'Chó' : 'Mèo'} • {item.breed || 'Chưa rõ giống'}
-                    </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <FontAwesome5
+                      name={getSpeciesIcon(item.species)}
+                      size={16}
+                      color={selectedPet === item.id ? COLORS.primaryDark : COLORS.primary}
+                      style={{ marginRight: 10 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.pickerItemText, selectedPet === item.id && styles.pickerItemTextActive]}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.pickerItemSub}>
+                        Loài: {getSpeciesLabel(item.species)} • {item.breed || 'Chưa rõ giống'}
+                      </Text>
+                    </View>
                   </View>
                   {selectedPet === item.id && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />}
                 </TouchableOpacity>
@@ -613,6 +696,29 @@ export default function BookingScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
+  successBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#D1FAE5',
+    borderWidth: 1,
+    borderColor: '#6EE7B7',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  successText: {
+    color: '#065F46',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  successLink: {
+    color: '#047857',
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 6,
+    textDecorationLine: 'underline',
+  },
   container: {
     paddingHorizontal: 16,
     paddingTop: 8,

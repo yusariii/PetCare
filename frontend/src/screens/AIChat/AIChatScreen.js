@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -9,6 +9,7 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
@@ -34,11 +35,37 @@ export default function AIChatScreen({ navigation }) {
     const [aiResult, setAiResult] = useState(null);
     const [bookingLoading, setBookingLoading] = useState(false);
 
+    const formatBirthDate = (dateVal) => {
+        if (!dateVal) return 'Chưa cập nhật';
+        try {
+            const str = String(dateVal);
+            const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (match && !str.includes('T')) {
+                const [, y, m, d] = match;
+                return `${d}/${m}/${y}`;
+            }
+            const d = new Date(dateVal);
+            if (isNaN(d.getTime())) return 'Chưa cập nhật';
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            return `${day}/${month}/${year}`;
+        } catch {
+            return 'Chưa cập nhật';
+        }
+    };
+
     useEffect(() => {
         loadInitialData();
     }, []);
 
-    const loadInitialData = async () => {
+    useFocusEffect(
+        useCallback(() => {
+            loadInitialData();
+        }, [])
+    );
+
+    const loadInitialData = async (keepPetId = null) => {
         try {
             const [petsRes, roomsRes] = await Promise.all([
                 getMyPetsApi(),
@@ -46,8 +73,20 @@ export default function AIChatScreen({ navigation }) {
             ]);
 
             if (petsRes.data.success && petsRes.data.data.length > 0) {
-                setPets(petsRes.data.data);
-                setSelectedPet(petsRes.data.data[0]);
+                const petList = petsRes.data.data;
+                setPets(petList);
+                if (keepPetId) {
+                    const found = petList.find(p => p.id === keepPetId);
+                    setSelectedPet(found || petList[0]);
+                } else {
+                    setSelectedPet((prev) => {
+                        if (prev) {
+                            const found = petList.find(p => p.id === prev.id);
+                            if (found) return found;
+                        }
+                        return petList[0];
+                    });
+                }
             }
 
             if (roomsRes.data.success) {
@@ -158,6 +197,11 @@ export default function AIChatScreen({ navigation }) {
                             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.petPicker}>
                                 {pets.map((p) => {
                                     const isSelected = selectedPet?.id === p.id;
+                                    const speciesIcon = p.species?.toLowerCase().includes('dog') || p.species?.toLowerCase().includes('chó')
+                                        ? 'dog'
+                                        : p.species?.toLowerCase().includes('cat') || p.species?.toLowerCase().includes('mèo')
+                                        ? 'cat'
+                                        : 'paw';
                                     return (
                                         <TouchableOpacity
                                             key={p.id}
@@ -166,7 +210,7 @@ export default function AIChatScreen({ navigation }) {
                                             activeOpacity={0.7}
                                         >
                                             <FontAwesome5
-                                                name={p.species === 'dog' ? 'dog' : 'cat'}
+                                                name={speciesIcon}
                                                 size={14}
                                                 color={isSelected ? COLORS.primaryDark : COLORS.textSecondary}
                                             />
@@ -184,21 +228,19 @@ export default function AIChatScreen({ navigation }) {
                                     <View style={styles.petSummaryRow}>
                                         <Text style={styles.summaryLabel}>Loài & Giống:</Text>
                                         <Text style={styles.summaryValue}>
-                                            {selectedPet.species === 'dog' ? 'Chó' : 'Mèo'} • {selectedPet.breed || 'Chưa rõ giống'}
+                                            {selectedPet.species === 'dog' ? 'Chó' : selectedPet.species === 'cat' ? 'Mèo' : 'Khác'} • {selectedPet.breed || 'Chưa cập nhật'}
                                         </Text>
                                     </View>
                                     <View style={styles.petSummaryRow}>
                                         <Text style={styles.summaryLabel}>Cân nặng:</Text>
                                         <Text style={styles.summaryValue}>
-                                            {selectedPet.weight_kg ? `${selectedPet.weight_kg} kg` : 'Chưa cập nhật'}
+                                            {selectedPet.weight_kg ? `${Number(selectedPet.weight_kg).toFixed(2)} kg` : 'Chưa cập nhật'}
                                         </Text>
                                     </View>
-                                    {selectedPet.birth_date && (
-                                        <View style={styles.petSummaryRow}>
-                                            <Text style={styles.summaryLabel}>Ngày sinh:</Text>
-                                            <Text style={styles.summaryValue}>{selectedPet.birth_date}</Text>
-                                        </View>
-                                    )}
+                                    <View style={styles.petSummaryRow}>
+                                        <Text style={styles.summaryLabel}>Ngày sinh:</Text>
+                                        <Text style={styles.summaryValue}>{formatBirthDate(selectedPet.birth_date)}</Text>
+                                    </View>
                                 </View>
                             )}
                         </View>

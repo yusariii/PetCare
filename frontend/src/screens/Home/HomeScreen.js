@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -13,11 +13,12 @@ import {
     Alert,
     ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
-import { createPetApi, getMyPetsApi } from '../../api/petApi';
+import { createPetApi, getMyPetsApi, updatePetApi } from '../../api/petApi';
 
 export default function HomeScreen({ navigation }) {
     const { isTabletOrDesktop, isWideScreen } = useResponsive();
@@ -26,6 +27,10 @@ export default function HomeScreen({ navigation }) {
     const [showAddPet, setShowAddPet] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [petForm, setPetForm] = useState({ name: '', species: 'dog', breed: '', weight_kg: '', birth_date: '', gender: '' });
+
+    // State chỉnh sửa thông tin pet
+    const [editingPet, setEditingPet] = useState(null);
+    const [editForm, setEditForm] = useState({ name: '', species: 'dog', breed: '', weight_kg: '', birth_date: '', gender: '' });
 
     const fetchPets = async () => {
         try {
@@ -38,10 +43,99 @@ export default function HomeScreen({ navigation }) {
 
     useEffect(() => { fetchPets(); }, []);
 
+    useFocusEffect(
+        useCallback(() => {
+            fetchPets();
+        }, [])
+    );
+
     const onRefresh = async () => {
         setRefreshing(true);
         await fetchPets();
         setRefreshing(false);
+    };
+
+    const formatBirthDate = (dateVal) => {
+        if (!dateVal) return 'Chưa cập nhật';
+        try {
+            const str = String(dateVal);
+            const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (match && !str.includes('T')) {
+                const [, y, m, d] = match;
+                return `${d}/${m}/${y}`;
+            }
+            const d = new Date(dateVal);
+            if (isNaN(d.getTime())) return 'Chưa cập nhật';
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = d.getFullYear();
+            return `${day}/${month}/${year}`;
+        } catch {
+            return 'Chưa cập nhật';
+        }
+    };
+
+    const getEditBirthDate = (dateVal) => {
+        if (!dateVal) return '';
+        try {
+            const str = String(dateVal);
+            const match = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (match && !str.includes('T')) {
+                return `${match[1]}-${match[2]}-${match[3]}`;
+            }
+            const d = new Date(dateVal);
+            if (isNaN(d.getTime())) return '';
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        } catch {
+            return '';
+        }
+    };
+
+    const handleOpenEditPet = (pet) => {
+        setEditingPet(pet);
+        setEditForm({
+            name: pet.name || '',
+            species: pet.species || 'dog',
+            breed: pet.breed || '',
+            weight_kg: pet.weight_kg ? String(pet.weight_kg) : '',
+            birth_date: getEditBirthDate(pet.birth_date),
+            gender: pet.gender || '',
+        });
+    };
+
+    const updateEditForm = (field, value) => setEditForm((current) => ({ ...current, [field]: value }));
+
+    const handleUpdatePet = async () => {
+        if (!editingPet) return;
+        const name = editForm.name.trim();
+        const weight = editForm.weight_kg.trim();
+        if (!name) return Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên thú cưng.');
+        if (weight && (Number.isNaN(Number(weight)) || Number(weight) <= 0)) {
+            return Alert.alert('Thông tin chưa hợp lệ', 'Cân nặng phải là số lớn hơn 0.');
+        }
+        try {
+            setSubmitting(true);
+            const response = await updatePetApi(editingPet.id, {
+                name,
+                species: editForm.species,
+                breed: editForm.breed.trim() || null,
+                weight_kg: weight ? Number(weight) : null,
+                birth_date: editForm.birth_date.trim() || null,
+                gender: editForm.gender || null,
+            });
+            if (response.data.success) {
+                setEditingPet(null);
+                await fetchPets();
+                Alert.alert('Thành công', 'Đã cập nhật thông tin thú cưng.');
+            }
+        } catch (error) {
+            Alert.alert('Không thể cập nhật', error.response?.data?.message || 'Vui lòng thử lại sau.');
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     const updatePetForm = (field, value) => setPetForm((current) => ({ ...current, [field]: value }));
@@ -223,6 +317,14 @@ export default function HomeScreen({ navigation }) {
                                             )}
                                         </View>
                                     </View>
+                                    <TouchableOpacity
+                                        style={styles.editPetBtn}
+                                        onPress={() => handleOpenEditPet(item)}
+                                        activeOpacity={0.7}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                        <Ionicons name="create-outline" size={17} color={COLORS.primaryDark} />
+                                    </TouchableOpacity>
                                 </View>
 
                                 <View style={styles.petDetailsBox}>
@@ -232,14 +334,14 @@ export default function HomeScreen({ navigation }) {
                                     </View>
                                     <View style={styles.petDetailItem}>
                                         <Text style={styles.detailLabel}>Cân nặng:</Text>
-                                        <Text style={styles.detailValue}>{item.weight_kg ? `${item.weight_kg} kg` : 'N/A'}</Text>
+                                        <Text style={styles.detailValue}>
+                                            {item.weight_kg ? `${Number(item.weight_kg).toFixed(2)} kg` : 'Chưa cập nhật'}
+                                        </Text>
                                     </View>
-                                    {item.birth_date && (
-                                        <View style={styles.petDetailItem}>
-                                            <Text style={styles.detailLabel}>Ngày sinh:</Text>
-                                            <Text style={styles.detailValue}>{item.birth_date}</Text>
-                                        </View>
-                                    )}
+                                    <View style={styles.petDetailItem}>
+                                        <Text style={styles.detailLabel}>Ngày sinh:</Text>
+                                        <Text style={styles.detailValue}>{formatBirthDate(item.birth_date)}</Text>
+                                    </View>
                                 </View>
 
                                 <View style={styles.petCardActions}>
@@ -435,6 +537,145 @@ export default function HomeScreen({ navigation }) {
                                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                         <Ionicons name="save-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
                                         <Text style={styles.submitButtonText}>Lưu thông tin bé</Text>
+                                    </View>
+                                )}
+                            </TouchableOpacity>
+                        </ScrollView>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
+
+            {/* Modal Chỉnh Sửa Thông Tin Thú Cưng */}
+            <Modal visible={editingPet !== null} transparent animationType="fade" onRequestClose={() => setEditingPet(null)}>
+                <KeyboardAvoidingView
+                    style={styles.modalOverlay}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                >
+                    <View style={[styles.modalContent, isTabletOrDesktop && styles.modalContentDesktop]}>
+                        <View style={styles.modalHeader}>
+                            <View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Text style={styles.modalTitle}>Chỉnh sửa thông tin bé</Text>
+                                    <FontAwesome5 name="edit" size={16} color={COLORS.primary} />
+                                </View>
+                                <Text style={styles.modalSubtitle}>Cập nhật hồ sơ cho bé {editingPet?.name}</Text>
+                            </View>
+                            <TouchableOpacity
+                                style={styles.closeBtnBox}
+                                onPress={() => setEditingPet(null)}
+                                disabled={submitting}
+                            >
+                                <Ionicons name="close" size={20} color={COLORS.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                            <Text style={styles.inputLabel}>Tên bé cưng <Text style={styles.required}>*</Text></Text>
+                            <TextInput
+                                style={styles.input}
+                                value={editForm.name}
+                                onChangeText={(value) => updateEditForm('name', value)}
+                                placeholder="Ví dụ: Bông, Milu, Miu Miu..."
+                                placeholderTextColor={COLORS.textMuted}
+                                maxLength={50}
+                            />
+
+                            <Text style={styles.inputLabel}>Loài <Text style={styles.required}>*</Text></Text>
+                            <View style={styles.optionRow}>
+                                {[
+                                    { value: 'dog', label: 'Chó', icon: 'dog' },
+                                    { value: 'cat', label: 'Mèo', icon: 'cat' },
+                                    { value: 'other', label: 'Khác', icon: 'paw' },
+                                ].map((option) => (
+                                    <TouchableOpacity
+                                        key={option.value}
+                                        style={[styles.option, editForm.species === option.value && styles.optionActive]}
+                                        onPress={() => updateEditForm('species', option.value)}
+                                    >
+                                        <FontAwesome5
+                                            name={option.icon}
+                                            size={14}
+                                            color={editForm.species === option.value ? COLORS.primaryDark : COLORS.textSecondary}
+                                            style={{ marginRight: 6 }}
+                                        />
+                                        <Text style={[styles.optionText, editForm.species === option.value && styles.optionTextActive]}>
+                                            {option.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            <Text style={styles.inputLabel}>Giống</Text>
+                            <TextInput
+                                style={styles.input}
+                                value={editForm.breed}
+                                onChangeText={(value) => updateEditForm('breed', value)}
+                                placeholder="Ví dụ: Poodle, Corgi, Mèo Anh lông ngắn..."
+                                placeholderTextColor={COLORS.textMuted}
+                                maxLength={50}
+                            />
+
+                            <View style={styles.twoColumnRow}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.inputLabel}>Cân nặng (kg)</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={editForm.weight_kg}
+                                        onChangeText={(value) => updateEditForm('weight_kg', value.replace(',', '.'))}
+                                        placeholder="Ví dụ: 4.5"
+                                        placeholderTextColor={COLORS.textMuted}
+                                        keyboardType="decimal-pad"
+                                    />
+                                </View>
+                                <View style={{ flex: 1, marginLeft: 12 }}>
+                                    <Text style={styles.inputLabel}>Ngày sinh</Text>
+                                    <TextInput
+                                        style={styles.input}
+                                        value={editForm.birth_date}
+                                        onChangeText={(value) => updateEditForm('birth_date', value)}
+                                        placeholder="YYYY-MM-DD"
+                                        placeholderTextColor={COLORS.textMuted}
+                                        maxLength={10}
+                                    />
+                                </View>
+                            </View>
+
+                            <Text style={styles.inputLabel}>Giới tính</Text>
+                            <View style={styles.optionRow}>
+                                {[
+                                    { value: 'male', label: 'Đực', icon: 'male' },
+                                    { value: 'female', label: 'Cái', icon: 'female' },
+                                ].map((option) => (
+                                    <TouchableOpacity
+                                        key={option.value}
+                                        style={[styles.option, editForm.gender === option.value && styles.optionActive]}
+                                        onPress={() => updateEditForm('gender', editForm.gender === option.value ? '' : option.value)}
+                                    >
+                                        <Ionicons
+                                            name={option.icon}
+                                            size={14}
+                                            color={editForm.gender === option.value ? COLORS.primaryDark : COLORS.textSecondary}
+                                            style={{ marginRight: 6 }}
+                                        />
+                                        <Text style={[styles.optionText, editForm.gender === option.value && styles.optionTextActive]}>
+                                            {option.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            <TouchableOpacity
+                                style={styles.submitButton}
+                                onPress={handleUpdatePet}
+                                disabled={submitting}
+                                activeOpacity={0.8}
+                            >
+                                {submitting ? (
+                                    <ActivityIndicator color="#fff" />
+                                ) : (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <Ionicons name="checkmark-circle-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                                        <Text style={styles.submitButtonText}>Lưu thay đổi</Text>
                                     </View>
                                 )}
                             </TouchableOpacity>
@@ -660,6 +901,18 @@ const styles = StyleSheet.create({
     },
     petHeaderInfo: {
         flex: 1,
+        marginRight: 8,
+    },
+    editPetBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: COLORS.surfaceSubtle,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        alignSelf: 'flex-start',
     },
     petName: {
         fontSize: 17,
