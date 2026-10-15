@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
@@ -45,25 +46,34 @@ export default function PharmacyScreen() {
     }
   };
 
-  const loadPrescriptions = async (petId) => {
+  const loadPrescriptions = async (petId, showLoading = true) => {
     if (!petId) return;
     try {
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const response = await getPetPrescriptionsApi(petId);
       setPrescriptions(response.data.success ? response.data.data || [] : []);
     } catch (error) {
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể tải đơn thuốc');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   };
 
-  useEffect(() => { loadPets(); }, []);
-  useEffect(() => { if (selectedPetId) loadPrescriptions(selectedPetId); }, [selectedPetId]);
+  useFocusEffect(
+    useCallback(() => {
+      loadPets();
+    }, [])
+  );
+
+  useEffect(() => {
+    if (selectedPetId) {
+      loadPrescriptions(selectedPetId, prescriptions.length === 0);
+    }
+  }, [selectedPetId]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadPrescriptions(selectedPetId);
+    await loadPrescriptions(selectedPetId, false);
     setRefreshing(false);
   };
 
@@ -107,37 +117,47 @@ export default function PharmacyScreen() {
       </View>
 
       {/* Pet selector chips */}
-      {pets.length > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.petRow}
-          contentContainerStyle={styles.petRowContent}
-        >
-          {pets.map((pet) => {
-            const isSelected = selectedPetId === pet.id;
-            return (
-              <TouchableOpacity
-                key={pet.id}
-                style={[styles.petChip, isSelected && styles.petChipSelected]}
-                onPress={() => setSelectedPetId(pet.id)}
-                activeOpacity={0.7}
-              >
-                <FontAwesome5
-                  name={pet.species === 'dog' ? 'dog' : 'cat'}
-                  size={14}
-                  color={isSelected ? COLORS.primaryDark : COLORS.textSecondary}
-                />
-                <Text style={[styles.petChipText, isSelected && styles.petChipTextSelected]}>
-                  {pet.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+      {pets.length > 0 && (
+        <View style={styles.petSelectorContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.petScrollView}
+            contentContainerStyle={styles.petRowContent}
+          >
+            {pets.map((pet) => {
+              const isSelected = selectedPetId === pet.id;
+              const speciesIcon = pet.species?.toLowerCase().includes('dog') || pet.species?.toLowerCase().includes('chó')
+                ? 'dog'
+                : pet.species?.toLowerCase().includes('cat') || pet.species?.toLowerCase().includes('mèo')
+                ? 'cat'
+                : 'paw';
+
+              return (
+                <TouchableOpacity
+                  key={pet.id}
+                  style={[styles.petChip, isSelected && styles.petChipSelected]}
+                  onPress={() => setSelectedPetId(pet.id)}
+                  activeOpacity={0.7}
+                >
+                  <FontAwesome5
+                    name={speciesIcon}
+                    size={14}
+                    color={isSelected ? COLORS.primaryDark : COLORS.textSecondary}
+                  />
+                  <Text style={[styles.petChipText, isSelected && styles.petChipTextSelected]}>
+                    {pet.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
       )}
 
       <ScrollView
+        style={styles.listScrollView}
+        contentContainerStyle={styles.listScrollContent}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />}
       >
@@ -287,6 +307,7 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 16,
     marginTop: 4,
+    flexShrink: 0,
   },
   title: {
     color: COLORS.text,
@@ -298,16 +319,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
   },
-  petRow: {
+  petSelectorContainer: {
+    flexShrink: 0,
     marginBottom: 16,
   },
+  petScrollView: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   petRowContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
   },
   petChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     borderWidth: 1.5,
     borderColor: COLORS.border,
     borderRadius: 20,
@@ -319,9 +349,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight,
     borderColor: COLORS.primary,
   },
-  petIcon: {
-    fontSize: 16,
-  },
   petChipText: {
     color: COLORS.textSecondary,
     fontWeight: '600',
@@ -330,6 +357,12 @@ const styles = StyleSheet.create({
   petChipTextSelected: {
     color: COLORS.primaryDark,
     fontWeight: '700',
+  },
+  listScrollView: {
+    flex: 1,
+  },
+  listScrollContent: {
+    paddingBottom: 32,
   },
   centerBox: {
     alignItems: 'center',
