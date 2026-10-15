@@ -1,3 +1,4 @@
+import './src/utils/customAlert';
 import React, { useState, useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
@@ -8,6 +9,7 @@ import { StatusBar } from 'expo-status-bar';
 import LoginScreen from './src/screens/Auth/LoginScreen';
 import RegisterScreen from './src/screens/Auth/RegisterScreen';
 import AppNavigator from './src/navigation/AppNavigator';
+import CustomAlertModal from './src/components/CustomAlertModal';
 import { onAuthFailure } from './src/api/client';
 
 const AuthStack = createNativeStackNavigator();
@@ -61,6 +63,7 @@ export default function App() {
           </AuthStack.Navigator>
         )}
       </NavigationContainer>
+      <CustomAlertModal />
     </SafeAreaProvider>
   );
 }
