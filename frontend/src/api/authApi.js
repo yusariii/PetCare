@@ -3,3 +3,4 @@ import client from './client';
 export const loginApi = (email, password) => client.post('/auth/login', { email, password });
 export const registerApi = (data) => client.post('/auth/register', data);
 export const getProfileApi = () => client.get('/auth/profile');
+export const updateProfileApi = (data) => client.put('/auth/profile', data);

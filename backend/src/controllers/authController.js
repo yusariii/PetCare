@@ -62,7 +62,7 @@ exports.login = async (req, res) => {
       success: true,
       message: 'Đăng nhập thành công',
       token,
-      user: { id: user.id, full_name: user.full_name, email: user.email, role: user.role }
+      user: { id: user.id, full_name: user.full_name, email: user.email, phone: user.phone || null, role: user.role }
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -75,5 +75,51 @@ exports.getProfile = async (req, res) => {
     return res.status(200).json({ success: true, data: users[0] });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const { full_name, phone } = req.body;
+    if (!full_name || !String(full_name).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Họ và tên không được để trống'
+      });
+    }
+
+    const cleanName = String(full_name).trim();
+    const cleanPhone = phone !== undefined && phone !== null && String(phone).trim() !== ''
+      ? String(phone).trim()
+      : null;
+
+    if (cleanPhone && !/^[0-9+\-\s]{8,15}$/.test(cleanPhone)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Số điện thoại không hợp lệ (vui lòng nhập 8-15 chữ số)'
+      });
+    }
+
+    await db.query(
+      'UPDATE Users SET full_name = ?, phone = ? WHERE id = ?',
+      [cleanName, cleanPhone, req.user.id]
+    );
+
+    const [users] = await db.query(
+      'SELECT id, full_name, email, phone, role, created_at FROM Users WHERE id = ?',
+      [req.user.id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Cập nhật thông tin cá nhân thành công',
+      data: users[0]
+    });
+  } catch (error) {
+    console.error('UPDATE_PROFILE_ERROR:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi cập nhật thông tin cá nhân'
+    });
   }
 };

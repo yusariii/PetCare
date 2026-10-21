@@ -1,10 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  Modal,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
+import { getProfileApi, updateProfileApi } from '../../api/authApi';
 
 const ROLE_DISPLAY = {
   admin: { label: 'Quản trị viên hệ thống', bg: '#FEF3C7', color: '#B45309' },
@@ -31,10 +42,62 @@ const renderRoleIcon = (role) => {
 export default function ProfileScreen({ onLogout }) {
   const { isTabletOrDesktop } = useResponsive();
   const [user, setUser] = useState(null);
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editFullName, setEditFullName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const loadProfile = async () => {
+    try {
+      const cached = await AsyncStorage.getItem('user');
+      if (cached) {
+        setUser(JSON.parse(cached));
+      }
+      const res = await getProfileApi();
+      if (res.data?.success && res.data.data) {
+        const freshUser = res.data.data;
+        setUser(freshUser);
+        await AsyncStorage.setItem('user', JSON.stringify(freshUser));
+      }
+    } catch (e) {
+      // Giữ thông tin từ AsyncStorage nếu lỗi mạng
+    }
+  };
 
   useEffect(() => {
-    AsyncStorage.getItem('user').then((u) => u && setUser(JSON.parse(u)));
+    loadProfile();
   }, []);
+
+  const openEditModal = () => {
+    setEditFullName(user?.full_name || '');
+    setEditPhone(user?.phone || '');
+    setEditModalVisible(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editFullName.trim()) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập họ và tên.');
+      return;
+    }
+    try {
+      setSaving(true);
+      const res = await updateProfileApi({
+        full_name: editFullName.trim(),
+        phone: editPhone.trim() || null,
+      });
+      if (res.data?.success && res.data.data) {
+        const updatedUser = res.data.data;
+        setUser(updatedUser);
+        await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+        setEditModalVisible(false);
+        Alert.alert('Thành công', 'Đã cập nhật thông tin cá nhân.');
+      }
+    } catch (error) {
+      Alert.alert('Lỗi', error.response?.data?.message || 'Không thể cập nhật thông tin cá nhân.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleLogout = async () => {
     await AsyncStorage.clear();
@@ -71,13 +134,22 @@ export default function ProfileScreen({ onLogout }) {
 
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Số điện thoại:</Text>
-              <Text style={styles.infoValue}>{user?.phone || 'Chưa cập nhật'}</Text>
+              <Text style={[styles.infoValue, !user?.phone && { color: COLORS.textSecondary, fontStyle: 'italic' }]}>
+                {user?.phone || 'Chưa cập nhật'}
+              </Text>
             </View>
 
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Vai trò:</Text>
               <Text style={styles.infoValue}>{user?.role || 'customer'}</Text>
             </View>
+
+            <TouchableOpacity style={styles.btnEditProfile} onPress={openEditModal} activeOpacity={0.85}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <Ionicons name="create-outline" size={18} color={COLORS.primaryDark} />
+                <Text style={styles.editProfileText}>Cập Nhật Thông Tin & SĐT</Text>
+              </View>
+            </TouchableOpacity>
 
             <TouchableOpacity style={styles.btnLogout} onPress={handleLogout} activeOpacity={0.8}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
@@ -134,6 +206,72 @@ export default function ProfileScreen({ onLogout }) {
 
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      {/* Modal Chỉnh sửa thông tin cá nhân & Số điện thoại */}
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, isTabletOrDesktop && styles.modalContentDesktop]}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="person-outline" size={20} color={COLORS.primary} />
+                <Text style={styles.modalTitle}>Cập nhật thông tin cá nhân</Text>
+              </View>
+              <TouchableOpacity style={styles.closeBtn} onPress={() => setEditModalVisible(false)}>
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.fieldLabel}>Họ và tên *</Text>
+            <TextInput
+              value={editFullName}
+              onChangeText={setEditFullName}
+              placeholder="Nhập họ và tên của bạn..."
+              placeholderTextColor={COLORS.textMuted || '#94A3B8'}
+              style={styles.input}
+            />
+
+            <Text style={styles.fieldLabel}>Số điện thoại liên hệ</Text>
+            <TextInput
+              value={editPhone}
+              onChangeText={setEditPhone}
+              placeholder="VD: 0901234567"
+              placeholderTextColor={COLORS.textMuted || '#94A3B8'}
+              keyboardType="phone-pad"
+              style={styles.input}
+            />
+
+            <Text style={styles.fieldHint}>
+              Cập nhật số điện thoại giúp bác sĩ và dược sĩ tra cứu nhanh hồ sơ thú cưng của bạn tại quầy.
+            </Text>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                onPress={() => setEditModalVisible(false)}
+                disabled={saving}
+              >
+                <Text style={styles.cancelBtnText}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.saveBtn, saving && { opacity: 0.7 }]}
+                onPress={handleSaveProfile}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.saveBtnText}>Lưu thay đổi</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ResponsiveContainer>
   );
 }
@@ -231,6 +369,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.text,
   },
+  btnEditProfile: {
+    backgroundColor: COLORS.primaryLight,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 14,
+  },
+  editProfileText: {
+    color: COLORS.primaryDark,
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
   btnLogout: {
     backgroundColor: '#FEE2E2',
     borderWidth: 1,
@@ -240,7 +394,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     width: '100%',
-    marginTop: 18,
+    marginTop: 10,
   },
   logoutText: {
     color: '#B91C1C',
@@ -294,5 +448,97 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 12,
     color: COLORS.textMuted,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContent: {
+    width: '100%',
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    ...SHADOWS.sm,
+  },
+  modalContentDesktop: {
+    maxWidth: 460,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: COLORS.text,
+  },
+  closeBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.text,
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: COLORS.text,
+    marginBottom: 12,
+  },
+  fieldHint: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    lineHeight: 17,
+    marginBottom: 18,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  cancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+  },
+  cancelBtnText: {
+    color: COLORS.textSecondary,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  saveBtn: {
+    flex: 1.5,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBtnText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 14,
   },
 });
