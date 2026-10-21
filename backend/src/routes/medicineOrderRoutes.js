@@ -7,7 +7,9 @@ router.use(verifyToken);
 
 router.post('/', requireRole('customer'), medicineOrderController.createOrder);
 router.get('/my', requireRole('customer'), medicineOrderController.getMyOrders);
-router.get('/', requireRole('pharmacist'), medicineOrderController.listOrders);
-router.patch('/:id/status', requireRole('pharmacist'), medicineOrderController.updateOrderStatus);
+router.get('/', requireRole('pharmacist', 'admin'), medicineOrderController.listOrders);
+router.post('/walk-in', requireRole('pharmacist', 'admin'), medicineOrderController.createWalkInOrder);
+router.put('/:id/items', requireRole('pharmacist', 'admin'), medicineOrderController.updateOrderItems);
+router.patch('/:id/status', requireRole('pharmacist', 'admin'), medicineOrderController.updateOrderStatus);
 
 module.exports = router;
