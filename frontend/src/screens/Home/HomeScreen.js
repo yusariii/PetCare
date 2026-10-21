@@ -343,25 +343,6 @@ export default function HomeScreen({ navigation }) {
                                         <Text style={styles.detailValue}>{formatBirthDate(item.birth_date)}</Text>
                                     </View>
                                 </View>
-
-                                <View style={styles.petCardActions}>
-                                    <TouchableOpacity
-                                        style={styles.cardBookingBtn}
-                                        onPress={() => navigation.navigate('Booking')}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Ionicons name="calendar-outline" size={13} color="#fff" style={{ marginRight: 4 }} />
-                                        <Text style={styles.cardBookingBtnText}>Đặt lịch khám</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={styles.cardAiBtn}
-                                        onPress={() => navigation.navigate('AIChat')}
-                                        activeOpacity={0.7}
-                                    >
-                                        <MaterialCommunityIcons name="robot-outline" size={15} color={COLORS.primaryDark} style={{ marginRight: 4 }} />
-                                        <Text style={styles.cardAiBtnText}>Tư vấn AI</Text>
-                                    </TouchableOpacity>
-                                </View>
                             </View>
                         ))}
                     </View>
