@@ -14,6 +14,7 @@ const prescriptionRoutes = require('./routes/prescriptionRoutes');
 const medicineOrderRoutes = require('./routes/medicineOrderRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const invoiceRoutes = require('./routes/invoiceRoutes');
 const { initCronJobs } = require('./services/cronService');
 const initDatabase = require('./config/initDatabase');
 const seedData = require('./config/seedData');
@@ -44,6 +45,7 @@ app.use('/api/prescriptions', prescriptionRoutes);
 app.use('/api/medicine-orders', medicineOrderRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/invoices', invoiceRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

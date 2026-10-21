@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { getOwnRoomId } = require('../utils/doctorScope');
+const { ensureInvoiceTables } = require('./invoiceController');
 
 /**
  * Chuẩn hoá thời gian về chuỗi giờ địa phương "YYYY-MM-DD HH:mm:ss" để lưu vào cột DATETIME.
@@ -239,6 +240,7 @@ exports.getMyAppointments = async (req, res) => {
  */
 exports.getAllAppointments = async (req, res) => {
   try {
+    await ensureInvoiceTables();
     const { date, status } = req.query;
     let { room_id } = req.query;
 
@@ -259,6 +261,8 @@ exports.getAllAppointments = async (req, res) => {
       SELECT
         a.id,
         a.pet_id,
+        a.room_id,
+        a.service_id,
         a.appointment_datetime,
         a.status,
         a.notes,
@@ -269,6 +273,11 @@ exports.getAllAppointments = async (req, res) => {
         p.weight_kg,
         cr.room_code,
         cr.room_name,
+        (SELECT GROUP_CONCAT(DISTINCT id ORDER BY id SEPARATOR ',')
+         FROM Services
+         WHERE id = a.service_id OR id IN (
+           SELECT service_id FROM Appointment_Services WHERE appointment_id = a.id
+         )) as service_ids_raw,
         (SELECT GROUP_CONCAT(DISTINCT service_name ORDER BY service_name SEPARATOR ', ')
          FROM Services
          WHERE id = a.service_id OR id IN (
@@ -279,16 +288,23 @@ exports.getAllAppointments = async (req, res) => {
          WHERE id = a.service_id OR id IN (
            SELECT service_id FROM Appointment_Services WHERE appointment_id = a.id
          )) as price,
-        CONCAT(u.full_name, ' (', u.phone, ')') as customer_info,
+        u.full_name as customer_name,
+        u.phone as customer_phone,
+        CONCAT(u.full_name, ' (', COALESCE(u.phone, 'Chưa có SĐT'), ')') as customer_info,
         ar.rating as review_rating,
         ar.comment as review_comment,
-        rd.full_name as room_doctor_name
+        rd.full_name as room_doctor_name,
+        inv.id as invoice_id,
+        inv.invoice_code as invoice_code,
+        inv.total_amount as invoice_total,
+        inv.payment_status as invoice_payment_status
       FROM Appointments a
       JOIN Pets p ON a.pet_id = p.id
       JOIN Clinic_Rooms cr ON a.room_id = cr.id
       JOIN Users u ON a.user_id = u.id
       LEFT JOIN Users rd ON rd.id = cr.doctor_id
       LEFT JOIN Appointment_Reviews ar ON ar.appointment_id = a.id
+      LEFT JOIN Invoices inv ON inv.appointment_id = a.id
       WHERE 1=1
     `;
 
@@ -313,9 +329,21 @@ exports.getAllAppointments = async (req, res) => {
 
     const [list] = await db.query(query, params);
 
+    const formattedList = list.map((item) => ({
+      ...item,
+      service_ids: item.service_ids_raw
+        ? String(item.service_ids_raw)
+            .split(',')
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0)
+        : item.service_id
+        ? [Number(item.service_id)]
+        : []
+    }));
+
     return res.status(200).json({
       success: true,
-      data: list
+      data: formattedList
     });
   } catch (error) {
     console.error('GET_ALL_APPOINTMENTS_ERROR:', error.message);

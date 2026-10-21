@@ -318,23 +318,69 @@ const initDatabase = async () => {
     `);
     console.log('✅ Bảng Prescription_Items được tạo');
 
-    // 14. Bảng Medicine_Orders - khách đặt giữ chỗ thuốc theo đơn, thanh toán tại quầy
+    // 14. Bảng Medicine_Orders - đơn mua thuốc theo đơn kê của bác sĩ hoặc đơn thuốc khách vãng lai tại quầy
     await connection.execute(`
       CREATE TABLE IF NOT EXISTS Medicine_Orders (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        prescription_id INT NOT NULL,
-        user_id INT NOT NULL,
-        total_amount DECIMAL(10,2) NOT NULL,
+        order_code VARCHAR(30) NULL UNIQUE,
+        order_type ENUM('prescription', 'walk_in') NOT NULL DEFAULT 'prescription',
+        prescription_id INT NULL,
+        user_id INT NULL,
+        pharmacist_id INT NULL,
+        customer_name VARCHAR(100) NULL,
+        pet_species ENUM('dog', 'cat', 'other') NOT NULL DEFAULT 'dog',
+        total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
         status ENUM('pending', 'paid', 'cancelled') NOT NULL DEFAULT 'pending',
+        notes TEXT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (prescription_id) REFERENCES Prescriptions(id) ON DELETE CASCADE,
-        FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE,
+        FOREIGN KEY (prescription_id) REFERENCES Prescriptions(id) ON DELETE SET NULL,
+        FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE SET NULL,
+        FOREIGN KEY (pharmacist_id) REFERENCES Users(id) ON DELETE SET NULL,
         INDEX idx_user_id (user_id),
-        INDEX idx_status (status)
+        INDEX idx_status (status),
+        INDEX idx_order_type (order_type)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    // Đảm bảo tương thích ngược nếu bảng Medicine_Orders đã tồn tại từ trước
+    const alterQueries = [
+      'ALTER TABLE Medicine_Orders MODIFY COLUMN prescription_id INT NULL',
+      'ALTER TABLE Medicine_Orders MODIFY COLUMN user_id INT NULL',
+      "ALTER TABLE Medicine_Orders ADD COLUMN order_code VARCHAR(30) NULL UNIQUE AFTER id",
+      "ALTER TABLE Medicine_Orders ADD COLUMN order_type ENUM('prescription', 'walk_in') NOT NULL DEFAULT 'prescription' AFTER order_code",
+      'ALTER TABLE Medicine_Orders ADD COLUMN pharmacist_id INT NULL AFTER user_id',
+      'ALTER TABLE Medicine_Orders ADD COLUMN customer_name VARCHAR(100) NULL AFTER pharmacist_id',
+      "ALTER TABLE Medicine_Orders ADD COLUMN pet_species ENUM('dog', 'cat', 'other') NOT NULL DEFAULT 'dog' AFTER customer_name",
+      'ALTER TABLE Medicine_Orders ADD COLUMN notes TEXT NULL AFTER status'
+    ];
+    for (const q of alterQueries) {
+      try {
+        await connection.execute(q);
+      } catch (e) {
+        if (e.code !== 'ER_DUP_FIELDNAME' && e.code !== 'ER_DUP_KEYNAME') {
+          // ignore harmless migration warnings
+        }
+      }
+    }
     console.log('✅ Bảng Medicine_Orders được tạo');
+
+    // 14b. Bảng Medicine_Order_Items - danh sách thuốc thực tế khách mua trong hóa đơn dược
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS Medicine_Order_Items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        order_id INT NOT NULL,
+        medicine_id INT NOT NULL,
+        medicine_name VARCHAR(150) NOT NULL,
+        unit VARCHAR(30) NOT NULL DEFAULT 'viên',
+        dosage VARCHAR(200) NULL,
+        quantity INT NOT NULL,
+        unit_price DECIMAL(10,2) NOT NULL,
+        FOREIGN KEY (order_id) REFERENCES Medicine_Orders(id) ON DELETE CASCADE,
+        FOREIGN KEY (medicine_id) REFERENCES Medicines(id) ON DELETE RESTRICT,
+        INDEX idx_order_id (order_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Bảng Medicine_Order_Items được tạo');
 
     // 15. Bảng Stock_Movements - nhật ký biến động tồn kho thuốc để truy vết
     await connection.execute(`
@@ -354,7 +400,57 @@ const initDatabase = async () => {
         INDEX idx_medicine_created (medicine_id, created_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('✅ Bảng Stock_Movements được tạo');
+    // 16. Bảng Invoices - hóa đơn thanh toán dịch vụ khám (hỗ trợ cả đơn đặt lịch và đơn khách vãng lai)
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS Invoices (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        invoice_code VARCHAR(30) NOT NULL UNIQUE,
+        invoice_type ENUM('appointment', 'walk_in') NOT NULL DEFAULT 'appointment',
+        appointment_id INT NULL UNIQUE,
+        room_id INT NOT NULL,
+        doctor_id INT NOT NULL,
+        customer_name VARCHAR(100) NOT NULL,
+        customer_phone VARCHAR(20) NULL,
+        pet_name VARCHAR(50) NULL,
+        pet_species ENUM('dog', 'cat', 'other') NOT NULL DEFAULT 'dog',
+        total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+        payment_status ENUM('pending', 'paid') NOT NULL DEFAULT 'pending',
+        notes TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (appointment_id) REFERENCES Appointments(id) ON DELETE SET NULL,
+        FOREIGN KEY (room_id) REFERENCES Clinic_Rooms(id) ON DELETE RESTRICT,
+        FOREIGN KEY (doctor_id) REFERENCES Users(id) ON DELETE RESTRICT,
+        INDEX idx_invoice_type (invoice_type),
+        INDEX idx_room_created (room_id, created_at),
+        INDEX idx_doctor_id (doctor_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    try {
+      await connection.execute(`
+        ALTER TABLE Invoices ADD COLUMN payment_status ENUM('pending', 'paid') NOT NULL DEFAULT 'paid' AFTER total_amount
+      `);
+    } catch (alterError) {
+      if (alterError.code !== 'ER_DUP_FIELDNAME') {
+        throw alterError;
+      }
+    }
+    console.log('✅ Bảng Invoices được tạo');
+
+    // 17. Bảng Invoice_Items - danh sách các dịch vụ thực tế trong hóa đơn
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS Invoice_Items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        invoice_id INT NOT NULL,
+        service_id INT NOT NULL,
+        service_name VARCHAR(100) NOT NULL,
+        unit_price DECIMAL(10,2) NOT NULL,
+        FOREIGN KEY (invoice_id) REFERENCES Invoices(id) ON DELETE CASCADE,
+        FOREIGN KEY (service_id) REFERENCES Services(id) ON DELETE RESTRICT,
+        INDEX idx_invoice_id (invoice_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('✅ Bảng Invoice_Items được tạo');
 
     console.log('\n🎉 Database initialization hoàn thành!');
     console.log('📝 Lưu ý: Vui lòng thêm dữ liệu mẫu như Clinic_Rooms và Services');
