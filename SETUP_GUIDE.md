@@ -1,270 +1,155 @@
-# 🐾 PetCare Hospital Management System - Implementation Update
+# 🛠️ Hướng Dẫn Cài Đặt, Vận Hành & Kịch Bản Kiểm Thử (Setup & Testing Guide)
 
-## 📊 Current Status Summary
-
-Ứng dụng đã được **nâng cấp hoàn chỉnh** với tất cả các chức năng chính được triển khai. Dưới đây là tóm tắt những gì đã được hoàn thành trong phiên làm việc này.
-
-### ✅ Hoàn Thành Trong Phiên Này (5 Tác Vụ Lớn)
-
-#### 1. 🗺️ Navigation - 6 Tabs (Từ 4 → 6)
-**File:** `frontend/src/navigation/AppNavigator.js`
-
-**Những gì đã thay đổi:**
-- Thêm 2 tabs mới: **Bản Đồ (Hospital Map)** và **Lịch Hẹn (Appointments)**
-- Bố trí tab bar: 🏠 Home | 🏥 Hospital | 📅 Booking | 🤖 AIChat | 📋 Appointments | 👤 Profile
-- Tăng chiều cao tab bar từ 60 → 65px để hiển thị text labels rõ ràng
-
-#### 2. 📅 BookingScreen - Booking Flow Hoàn Chỉnh
-**File:** `frontend/src/screens/Booking/BookingScreen.js`
-
-**Tính năng mới:**
-- ✅ Chọn thú cưng (từ danh sách thú cưng của user)
-- ✅ Chọn phòng khám (nhận từ HospitalMapScreen hoặc chọn thủ công)
-- ✅ Chọn dịch vụ (hiển thị dịch vụ theo phòng đã chọn)
-- ✅ Chọn ngày (14 ngày tới)
-- ✅ Chọn giờ (với thông tin slot khả dụng)
-- ✅ Ghi chú (tùy chọn)
-- ✅ Validation và error handling toàn bộ
-
-**Business Rules Được Áp Dụng:**
-- BR01: Kiểm tra sức chứa phòng (max_slot_per_hour)
-- BR02: Yêu cầu booking cách 60 phút (do backend validation)
-- BR03: Validate trạng thái lịch hẹn
-
-#### 3. 🔧 API Client - Port & Error Handling
-**File:** `frontend/src/api/client.js`
-
-**Cập nhật:**
-- ✅ Thay đổi port: 1008 → 5000 (khớp backend)
-- ✅ Xử lý 401 errors (tự động logout khi token hết hạn)
-- ✅ Platform-specific URLs (10.0.2.2 cho Android, localhost cho web)
-- ✅ Timeout: 15 giây
-
-#### 4. 📋 AppointmentsScreen - Quản Lý Lịch Hẹn
-**File:** `frontend/src/screens/Appointments/AppointmentsScreen.js`
-
-**Tính năng:**
-- ✅ **Khách hàng:** Xem lịch của mình, hủy lịch (pending only)
-- ✅ **Bác sĩ:** Xem tất cả lịch, filter theo phòng/ngày, cập nhật trạng thái
-- ✅ Detail modal hiển thị đầy đủ thông tin
-- ✅ Status badges màu sắc (pending/confirmed/completed/cancelled)
-- ✅ Pull-to-refresh
-- ✅ Loading & error states
-- ✅ RBAC enforcement
-
-#### 5. 🐾 Pet API - CRUD Hoàn Chỉnh
-**Files:** 
-- Backend: `backend/src/controllers/petController.js`, `backend/src/routes/petRoutes.js`
-- Frontend: `frontend/src/api/petApi.js`
-
-**Endpoints:**
-- ✅ GET /pets - Danh sách thú cưng
-- ✅ POST /pets - Thêm thú cưng
-- ✅ GET /pets/:id - Chi tiết thú cưng
-- ✅ PATCH /pets/:id - Cập nhật thú cưng (MỚI)
-- ✅ DELETE /pets/:id - Xóa thú cưng (MỚI)
+Tài liệu này hướng dẫn chi tiết cách thiết lập môi trường, khởi chạy hệ thống **PetCare Hospital Management System** và các kịch bản demo phục vụ bảo vệ Đồ án tốt nghiệp.
 
 ---
 
-## 🎯 Business Rules Verification
+## 📋 1. Yêu Cầu Hệ Thống (Prerequisites)
 
-| BR | Mô Tả | Trạng Thái | Nơi Triển Khai |
-|:---:|---|:---:|---|
-| BR01 | Kiểm tra sức chứa phòng (per-room max_slot_per_hour) | ✅ | appointmentController.js |
-| BR02 | Yêu cầu booking cách 60 phút | ✅ | appointmentController.js |
-| BR03 | Vòng đời trạng thái (pending→confirmed→completed) | ✅ | appointmentController.js + AppointmentsScreen |
-| BR04 | Tự động tạo nhắc nhở (next_due_date) | ✅ | healthRecordController.js |
-| BR05 | AI với context phòng khám | ✅ | aiService.js (backend ready, frontend pending) |
-| BR06 | Cron job hàng ngày 8AM | ✅ | cronService.js |
+- **Node.js:** Phiên bản `>= 18.x` (khuyến nghị Node 18 LTS hoặc Node 20 LTS).
+- **MySQL Server:** Phiên bản `>= 8.0` (đang chạy tại cổng mặc định `3306`).
+- **Google Gemini API Key:** Lấy miễn phí tại [Google AI Studio](https://aistudio.google.com/) để sử dụng tính năng Tư vấn AI & RAG Vector Embedding.
+- **Trình duyệt Web** (Chrome / Edge) hoặc thiết bị di động cài đặt **Expo Go**.
 
 ---
 
-## 📦 Error Handling & UX
+## ⚙️ 2. Thiết Lập & Khởi Chạy Backend
 
-### Backend
-- ✅ Tất cả endpoint: Consistent format `{success, message, data, error}`
-- ✅ Validation errors: Status 400
-- ✅ Permission errors: Status 403
-- ✅ Not found: Status 404
-- ✅ Server errors: Status 500
-- ✅ NODE_ENV-aware error details (dev mode: error message, prod: generic message)
-
-### Frontend
-- ✅ Loading indicators (ActivityIndicator)
-- ✅ Error messages with retry button
-- ✅ Empty states
-- ✅ Pull-to-refresh
-- ✅ Form validation
-- ✅ Action confirmations (Alert)
-
----
-
-## 🚀 Hướng Dẫn Chạy Ứng Dụng
-
-### Bước 1: Chuẩn Bị Backend
-
+### Bước 2.1: Cài đặt thư viện
 ```bash
-# 1. Di chuyển đến thư mục backend
 cd backend
-
-# 2. Cài đặt dependencies
 npm install
+```
 
-# 3. Tạo .env file từ .env.example
-# Cần điền:
-# - DB_HOST (default: localhost)
-# - DB_USER (default: root)
-# - DB_PASSWORD
-# - DB_NAME (default: petcare_hospital)
-# - JWT_SECRET (bất kỳ secret key)
-# - GEMINI_API_KEY (lấy từ https://aistudio.google.com)
-# - PORT (default: 5000)
+### Bước 2.2: Tạo file cấu hình `.env`
+Tạo file `.env` ngay trong thư mục `backend/` với nội dung sau:
 
-# 4. Tạo database schema
-node src/config/setupDb.js
+```env
+PORT=5000
+NODE_ENV=development
 
-# 5. Seed dữ liệu (6 phòng, 19 dịch vụ)
-node src/config/runSeed.js
+# Cấu hình MySQL
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASS=123456
+DB_NAME=pet_care_db
 
-# 6. Chạy backend
+# Bảo mật JWT
+JWT_SECRET=petcare_secret_key_2026
+
+# Google Gemini AI (Phục vụ Chat AI & RAG)
+GEMINI_API_KEY=AIzaSyYourGeminiApiKeyHere
+
+# Mật khẩu mặc định cho tài khoản seed (Tùy chọn)
+ADMIN_DEFAULT_PASSWORD=Admin@123
+PHARMACIST_DEFAULT_PASSWORD=Pharma@123
+```
+
+### Bước 2.3: Khởi chạy Backend (Tự động khởi tạo Database & Seed Data)
+ Bạn **không cần** chạy câu lệnh SQL thủ công. Khi chạy lệnh dưới đây, hệ thống sẽ tự động thực thi `initDatabase.js` và `seedData.js`:
+- Tự động tạo database `pet_care_db` (nếu chưa có).
+- Tự động tạo và cập nhật (auto-migration) đầy đủ **18 bảng** dữ liệu.
+- Tự động thêm **6 phòng khám** (P101–P103 ở tầng 1, P201–P203 ở tầng 2), **19 dịch vụ**, **6 loại thuốc mẫu** kèm tồn kho ban đầu, tài liệu y khoa mẫu và tài khoản Admin/Dược sĩ mặc định.
+
+```bash
+# Chạy ở chế độ phát triển (tự động reload khi sửa code)
+npm run dev
+
+# Hoặc chạy bình thường
 npm start
-# hoặc
-node src/app.js
 ```
 
-### Bước 2: Chuẩn Bị Frontend
+Khi terminal hiển thị thông báo sau là Backend đã sẵn sàng:
+```text
+╔══════════════════════════════════════════════════════╗
+║   🏥 Pet Care Hospital Management System            ║
+║   🚀 Server chạy tại http://localhost:5000          ║
+║   📊 Environment: development                        ║
+╚══════════════════════════════════════════════════════╝
+```
 
+> **Lưu ý về RAG Embedding:** Nếu bạn thêm hoặc cập nhật `GEMINI_API_KEY` sau lần chạy đầu tiên và muốn đánh chỉ mục (index) lại toàn bộ tài liệu y khoa cho AI, hãy chạy lệnh:
+> ```bash
+> npm run reindex:docs
+> ```
+
+---
+
+## 📱 3. Thiết Lập & Khởi Chạy Frontend
+
+### Bước 3.1: Cài đặt thư viện
+Mở một terminal mới và di chuyển vào thư mục `frontend/`:
 ```bash
-# 1. Di chuyển đến thư mục frontend
 cd frontend
-
-# 2. Cài đặt dependencies
 npm install
+```
 
-# 3. Tạo .env file (nếu cần)
-# BASE_URL=http://localhost:5000/api (nếu dùng web)
-# hoặc
-# BASE_URL=http://10.0.2.2:5000/api (nếu dùng Android emulator)
-
-# 4. Chạy Expo
+### Bước 3.2: Khởi chạy ứng dụng Expo
+```bash
 npx expo start
-
-# 5. Trong Expo:
-# - Ấn 'w' để chạy trên web (http://localhost:19006)
-# - Ấn 'a' cho Android emulator
-# - Ấn 'i' cho iOS simulator
-# - Hoặc scan QR code bằng Expo Go app
 ```
+Sau khi Metro Bundler khởi động:
+- **Chạy trên Web (Khuyến nghị khi demo đa vai trò):** Nhấn phím **`w`** (Ứng dụng hỗ trợ giao diện Responsive cho cả màn hình rộng Desktop/Tablet và khung Mobile).
+- **Chạy trên Máy ảo Android:** Nhấn phím **`a`** (tự động kết nối tới `http://10.0.2.2:5000/api`).
+- **Chạy trên Điện thoại thật:** Quét mã QR bằng ứng dụng **Expo Go** (nếu dùng điện thoại thật, hãy cập nhật địa chỉ IP LAN của máy tính trong `frontend/src/api/client.js`).
 
 ---
 
-## 🧪 Test Scenarios (Để Xác Minh Hệ Thống)
+## 🧪 4. Kịch Bản Demo & Kiểm Thử Toàn Diện (End-to-End Demo Flow)
 
-### Scenario 1: Đăng Ký & Đăng Nhập
-```
-1. Mở app → Điền thông tin đăng ký
-2. Username: customer1, Password: 123456
-3. Xác nhận đăng ký thành công
-```
+Dưới đây là kịch bản chuẩn theo trình tự nghiệp vụ để trình bày khi bảo vệ đồ án:
 
-### Scenario 2: Xem Phòng Khám & Dịch Vụ
-```
-1. Nhấp tab "Bản Đồ" (🏥)
-2. Chọn Tầng 1 hoặc Tầng 2
-3. Xem danh sách phòng + dịch vụ
-4. Nhấp vào phòng để xem chi tiết
-```
+### Bước 1: Quản trị viên (`admin@petcare.local` / `Admin@123`)
+1. Đăng nhập bằng tài khoản Admin.
+2. Vào tab **Nhân sự / Người dùng** $\rightarrow$ Tạo tài khoản Bác sĩ mới (ví dụ: `bs.noi@petcare.local`) và phân công phụ trách **Phòng P102 - Phòng Khám Nội & Tiêm Chủng**.
+3. Xem tab **Tổng quan (Dashboard)** để kiểm tra biểu đồ thống kê hệ thống và tab **Tri thức AI** để xem các tài liệu y khoa RAG.
 
-### Scenario 3: Đặt Lịch
-```
-1. Từ Bản Đồ → Nhấp "Đặt Lịch Tại Phòng Này"
-   HOẶC nhấp tab "Đặt Lịch" (📅)
-2. Chọn thú cưng
-3. Phòng sẽ được pre-fill (nếu từ Bản Đồ)
-4. Chọn dịch vụ, ngày, giờ
-5. Nhấp "Xác Nhận Đặt Lịch"
-6. Xác nhận thành công
-```
+### Bước 2: Khách hàng (`customer`)
+1. Đăng ký tài khoản khách hàng mới và đăng nhập.
+2. Vào tab **Tài khoản cá nhân** $\rightarrow$ bấm **"Cập Nhật Thông Tin & SĐT"** $\rightarrow$ thêm số điện thoại (ví dụ: `0901234567`).
+3. Tại màn **Trang chủ**, bấm **"+ Thêm thú cưng"** để tạo hồ sơ bé (chọn loài Chó/Mèo/Khác, nhập cân nặng, ngày sinh).
+4. Vào tab **Bác sĩ AI** $\rightarrow$ chọn thú cưng vừa tạo và mô tả triệu chứng (ví dụ: *"Bé bỏ ăn, nôn dịch vàng từ sáng"*). AI sẽ phân tích dựa trên tài liệu RAG và gợi ý đặt lịch tại **Phòng P102**.
+5. Sang tab **Đặt lịch** $\rightarrow$ chọn thú cưng, chọn **Phòng P102**, tích chọn **1 hoặc nhiều dịch vụ** (ví dụ: *Khám Nội Tổng Quát* + *Tiêm Chủng Cơ Bản*), chọn ngày và khung giờ còn trống $\rightarrow$ xác nhận đặt lịch.
 
-### Scenario 4: Xem Lịch Hẹn & Hủy
-```
-1. Nhấp tab "Lịch Hẹn" (📋)
-2. Xem danh sách lịch đã đặt
-3. Nhấp vào lịch để xem chi tiết
-4. Nhấp "Hủy Lịch" (nếu pending)
-5. Xác nhận hủy
-```
+### Bước 3: Bác sĩ chuyên khoa (`doctor`)
+1. Đăng nhập bằng tài khoản Bác sĩ phụ trách Phòng P102.
+2. Tại màn **Ca khám**, chọn ca khám của khách $\rightarrow$ bấm **"Xác nhận lịch khám"**.
+3. **Chỉ định / Cập nhật dịch vụ khám (Đa phòng):**
+   - Trong quá trình khám (ví dụ khám tại P102 nhưng yêu cầu làm thêm Xét nghiệm / Siêu âm ở P202 hoặc Tiểu phẫu ở P103), bác sĩ bấm **"Chỉ định dịch vụ khám"** $\rightarrow$ tích chọn thêm dịch vụ của các phòng liên quan $\rightarrow$ bấm **"Lưu chỉ định dịch vụ (Đồng bộ sang Thu ngân)"**.
+4. Sau khi khám xong, bấm **"Hoàn thành khám bệnh"** $\rightarrow$ hệ thống **tự động đẩy toàn bộ dịch vụ đã chỉ định sang hóa đơn chờ tại Quầy Thu Ngân**.
+5. Sang tab **Đã khám**: Bấm vào ca khám $\rightarrow$ **Lập hồ sơ bệnh án** (nhập chẩn đoán, phác đồ, hẹn ngày tái khám) $\rightarrow$ hệ thống tự động mở form **Kê đơn thuốc** (chọn thuốc từ kho dược, nhập liều dùng và số lượng).
 
-### Scenario 5: Bác Sĩ Xác Nhận Lịch
-```
-1. Đăng nhập bằng tài khoản bác sĩ
-2. Tab "Lịch Hẹn" → Xem tất cả lịch
-3. Nhấp lịch pending → "Xác Nhận"
-4. Nhấp lịch confirmed → "Hoàn Thành"
-```
+### Bước 4: Thu ngân viện phí (`cashier@petcare.local` / `Cashier@123`)
+1. Đăng nhập bằng tài khoản Thu ngân $\rightarrow$ mở tab **Quầy thu ngân**.
+2. **Thanh toán 1 lần cho ca khám đặt lịch (đã tự động thêm sẵn dịch vụ từ Bác sĩ):**
+   - Trên danh sách **Chờ thanh toán**, ca khám vừa hoàn thành đã hiển thị sẵn đầy đủ các dịch vụ từ tất cả các phòng và tổng tiền.
+   - Thu ngân chỉ cần bấm **"Xuất Mã QR & Thu tiền"** $\rightarrow$ Popup Mã QR hiện ra ngay lập tức để khách quét thanh toán 1 lần duy nhất (nếu khách muốn điều chỉnh dịch vụ tại quầy, bấm **"Điều chỉnh DV"**) $\rightarrow$ bấm **"Hoàn tất & Đóng"**. Sau khi hoàn tất, hóa đơn chuyển sang trạng thái **Đã thanh toán** và khóa chỉnh sửa.
+3. **Tạo hóa đơn cho khách vãng lai (không đặt lịch trước):**
+   - Bấm nút **`+ Tạo hóa đơn vãng lai`** ở góc phải trên cùng:
+     - *Trường hợp khách đã có tài khoản:* Nhập SĐT `0901234567` vào ô **Tìm theo SĐT khách hàng** $\rightarrow$ bấm **Tìm SĐT** $\rightarrow$ hệ thống tự động điền tên chủ, hiển thị danh sách thú cưng để chọn và liên kết hóa đơn vào tài khoản khách.
+     - *Trường hợp khách mới hoàn toàn:* Chỉ cần nhập tên khách hàng, chọn loài (`Chó` / `Mèo` / `Khác`) và tích chọn các dịch vụ thực hiện từ bất kỳ phòng khám nào $\rightarrow$ xuất mã QR thanh toán.
 
----
+### Bước 5: Khách hàng đặt giữ chỗ thuốc & Đánh giá
+1. Khách hàng quay lại App $\rightarrow$ vào mục chi tiết thú cưng / đơn thuốc $\rightarrow$ bấm **"Đặt mua / Giữ chỗ đơn thuốc"** (hệ thống lập tức trừ giữ chỗ tồn kho để đảm bảo khách xuống quầy luôn còn thuốc).
+2. Khách hàng vào lịch khám đã hoàn thành để gửi **Đánh giá sao & Nhận xét**.
 
-## 📝 Ghi Chú Quan Trọng
-
-### Về Tính Năng
-1. **HospitalMapScreen**: Hoàn toàn tập trung vào hiển thị bản đồ interative
-2. **BookingScreen**: Có thể nhận `selectedRoomId` từ HospitalMapScreen qua `route.params`
-3. **AppointmentsScreen**: Tự động detect khách hàng vs bác sĩ qua role
-4. **AIChat**: Sẵn sàng để tích hợp `recommended_room_id` từ AI response
-
-### Về Cơ Sở Dữ Liệu
-- 8 bảng chính: Users, Clinic_Rooms, Services, Pets, Appointments, Health_Records, Reminders, AI_Consultations
-- Tất cả constraints và indexes đã được thiết lập
-- 6 phòng khám (P101-P103, P201-P203) trên 2 tầng
-- 19 dịch vụ với giá từ 100k-2M VND
-
-### Về JWT Token
-- Thời hạn: 7 ngày
-- Lưu trữ: AsyncStorage
-- Tự động thêm vào mọi request: `Authorization: Bearer {token}`
-- Tự động logout nếu hết hạn
+### Bước 6: Dược sĩ quầy thuốc (`pharmacist@petcare.local` / `Pharma@123`)
+1. Đăng nhập tài khoản Dược sĩ $\rightarrow$ mở tab **Quầy thuốc**.
+2. **Xử lý đơn thuốc bác sĩ kê:**
+   - Bấm **"Tạo hóa đơn & Mã QR"** trên đơn đang chờ thanh toán.
+   - Mặc định các thuốc trong đơn kê được tích chọn sẵn. Nếu khách không lấy 1 loại thuốc hoặc giảm số lượng, dược sĩ bỏ tích / chỉnh lại số lượng $\rightarrow$ hệ thống tự động **hoàn lại tồn kho phần thuốc không lấy** và tính lại tổng tiền $\rightarrow$ hiển thị **Mã QR thanh toán** $\rightarrow$ bấm **"Hoàn tất & Đóng"**.
+3. **Bán thuốc trực tiếp cho khách vãng lai:**
+   - Bấm nút **`+ Tạo hóa đơn`** ở góc phải trên cùng $\rightarrow$ có thể tìm theo SĐT khách hàng (không bắt buộc) hoặc nhập tên khách + chọn loài thú cưng $\rightarrow$ chọn các loại thuốc từ kho dược và số lượng mua $\rightarrow$ tạo mã QR thanh toán và trừ tồn kho tự động.
+4. Sang tab **Kho thuốc** để kiểm tra số lượng tồn kho thực tế và xem **Lịch sử biến động tồn kho** (`Stock_Movements`) của từng loại thuốc.
 
 ---
 
-## ⚠️ Common Issues & Solutions
+## ❓ 5. Xử Lý Sự Cố Thường Gặp (Troubleshooting)
 
-### Issue 1: `Cannot GET /api/pets`
-**Nguyên nhân:** Backend không chạy hoặc port sai
-**Giải pháp:**
-```bash
-# Kiểm tra backend đang chạy trên cổng nào
-# Backend mặc định: 5000
-# Frontend gọi tới: http://localhost:5000 (web) hoặc http://10.0.2.2:5000 (Android)
-```
-
-### Issue 2: "Invalid token"
-**Nguyên nhân:** Token hết hạn (7 ngày) hoặc sai JWT_SECRET
-**Giải pháp:**
-```bash
-# Đảm bảo JWT_SECRET trong .env giống ở backend
-# Nếu thay đổi .env, cần restart backend và clear AsyncStorage trên app
-```
-
-### Issue 3: "Room unavailable" khi đặt lịch
-**Nguyên nhân:** Phòng đã hết slot cho giờ đó
-**Giải pháp:**
-- Chọn giờ khác
-- Chọn phòng khác
-- Kiểm tra `max_slot_per_hour` của phòng (1-3)
-
----
-
-## 📞 Contact & Support
-
-**Nếu gặp vấn đề:**
-1. Kiểm tra console log (terminal backend + React Native console)
-2. Kiểm tra Network tab (DevTools)
-3. Kiểm tra .env file (tất cả biến cần thiết)
-4. Restart backend + frontend
-
----
-
-**Version:** 1.0 (Production Ready)  
-**Last Updated:** 2024-12  
-**Status:** ✅ Ready for Testing
+| Vấn đề | Nguyên nhân | Cách khắc phục |
+| :--- | :--- | :--- |
+| **`ER_ACCESS_DENIED_ERROR` khi chạy Backend** | Sai `DB_USER` hoặc `DB_PASS` trong `backend/.env` | Kiểm tra lại mật khẩu `root` của MySQL trong file `backend/.env`. |
+| **Frontend báo `Network Error`** | Backend chưa bật hoặc khác cổng | Đảm bảo Backend đang chạy ở cổng `5000` (`http://localhost:5000/health`). |
+| **Chat AI báo lỗi cấu hình API Key** | Chưa điền hoặc sai `GEMINI_API_KEY` | Kiểm tra biến `GEMINI_API_KEY` trong `backend/.env` và khởi động lại Backend. |
+| **Không tìm thấy SĐT khách hàng ở form vãng lai** | Tài khoản khách hàng chưa cập nhật SĐT | Đăng nhập tài khoản khách hàng $\rightarrow$ vào tab **Tài khoản** $\rightarrow$ bấm **Cập Nhật Thông Tin & SĐT** để lưu số điện thoại. |
