@@ -18,7 +18,7 @@ import { Ionicons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-ico
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
-import { createPetApi, getMyPetsApi, updatePetApi } from '../../api/petApi';
+import { createPetApi, getMyPetsApi, updatePetApi, deletePetApi } from '../../api/petApi';
 
 export default function HomeScreen({ navigation }) {
     const { isTabletOrDesktop, isWideScreen } = useResponsive();
@@ -26,11 +26,15 @@ export default function HomeScreen({ navigation }) {
     const [refreshing, setRefreshing] = useState(false);
     const [showAddPet, setShowAddPet] = useState(false);
     const [submitting, setSubmitting] = useState(false);
-    const [petForm, setPetForm] = useState({ name: '', species: 'dog', breed: '', weight_kg: '', birth_date: '', gender: '' });
+    const emptyPetRow = () => ({ name: '', species: 'dog', breed: '', weight_kg: '', birth_date: '', gender: '' });
+    const [petForms, setPetForms] = useState([emptyPetRow()]);
 
-    // State chỉnh sửa thông tin pet
+    // State chỉnh sửa & xóa thông tin pet
     const [editingPet, setEditingPet] = useState(null);
     const [editForm, setEditForm] = useState({ name: '', species: 'dog', breed: '', weight_kg: '', birth_date: '', gender: '' });
+    const [deletingPet, setDeletingPet] = useState(null);
+    const [deleteError, setDeleteError] = useState('');
+    const [deletingSubmitting, setDeletingSubmitting] = useState(false);
 
     const fetchPets = async () => {
         try {
@@ -138,32 +142,82 @@ export default function HomeScreen({ navigation }) {
         }
     };
 
-    const updatePetForm = (field, value) => setPetForm((current) => ({ ...current, [field]: value }));
+    const handleOpenDeletePet = (pet) => {
+        setDeleteError('');
+        setDeletingPet(pet);
+    };
 
-    const resetPetForm = () => setPetForm({ name: '', species: 'dog', breed: '', weight_kg: '', birth_date: '', gender: '' });
+    const handleConfirmDeletePet = async () => {
+        if (!deletingPet) return;
+        try {
+            setDeletingSubmitting(true);
+            setDeleteError('');
+            const response = await deletePetApi(deletingPet.id);
+            if (response.data.success) {
+                const msg = response.data.message || 'Đã xóa thú cưng thành công.';
+                setDeletingPet(null);
+                setEditingPet(null);
+                await fetchPets();
+                Alert.alert('Thành công', msg);
+            }
+        } catch (error) {
+            const errMsg = error.response?.data?.message || 'Không thể xóa thú cưng. Vui lòng thử lại sau.';
+            setDeleteError(errMsg);
+        } finally {
+            setDeletingSubmitting(false);
+        }
+    };
+
+    const updatePetFormRow = (index, field, value) => {
+        setPetForms((prev) => prev.map((row, idx) => (idx === index ? { ...row, [field]: value } : row)));
+    };
+
+    const addAnotherPetRow = () => {
+        setPetForms((prev) => [...prev, emptyPetRow()]);
+    };
+
+    const removePetFormRow = (index) => {
+        setPetForms((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== index) : prev));
+    };
+
+    const resetPetForm = () => setPetForms([emptyPetRow()]);
 
     const handleAddPet = async () => {
-        const name = petForm.name.trim();
-        const weight = petForm.weight_kg.trim();
-        if (!name) return Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên thú cưng.');
-        if (weight && (Number.isNaN(Number(weight)) || Number(weight) <= 0)) {
-            return Alert.alert('Thông tin chưa hợp lệ', 'Cân nặng phải là số lớn hơn 0.');
+        const cleanedList = [];
+        for (let i = 0; i < petForms.length; i++) {
+            const row = petForms[i];
+            const name = row.name.trim();
+            const weight = row.weight_kg.trim();
+            if (!name) {
+                return Alert.alert('Thiếu thông tin', `Vui lòng nhập tên thú cưng (Bé #${i + 1}).`);
+            }
+            if (weight && (Number.isNaN(Number(weight)) || Number(weight) <= 0)) {
+                return Alert.alert('Thông tin chưa hợp lệ', `Cân nặng của bé "${name}" phải là số lớn hơn 0.`);
+            }
+            cleanedList.push({
+                name,
+                species: row.species,
+                breed: row.breed.trim() || null,
+                weight_kg: weight ? Number(weight) : null,
+                birth_date: row.birth_date.trim() || null,
+                gender: row.gender || null,
+            });
         }
+
         try {
             setSubmitting(true);
-            const response = await createPetApi({
-                name,
-                species: petForm.species,
-                breed: petForm.breed.trim() || null,
-                weight_kg: weight ? Number(weight) : null,
-                birth_date: petForm.birth_date.trim() || null,
-                gender: petForm.gender || null,
-            });
+            const payload = cleanedList.length === 1 ? cleanedList[0] : { pets: cleanedList };
+            const response = await createPetApi(payload);
             if (response.data.success) {
                 setShowAddPet(false);
                 resetPetForm();
                 await fetchPets();
-                Alert.alert('Thành công', 'Đã thêm thú cưng vào danh sách.');
+                Alert.alert(
+                    'Thành công',
+                    cleanedList.length > 1
+                        ? `Đã thêm hàng loạt ${cleanedList.length} thú cưng vào danh sách!`
+                        : 'Đã thêm thú cưng vào danh sách.'
+                );
             }
         } catch (error) {
             Alert.alert('Không thể thêm thú cưng', error.response?.data?.message || 'Vui lòng thử lại sau.');
@@ -265,7 +319,7 @@ export default function HomeScreen({ navigation }) {
                             <FontAwesome5 name="paw" size={16} color={COLORS.primary} />
                         </View>
                         <Text style={styles.sectionSubtitle}>
-                            {pets.length > 0 ? `Đang quản lý hồ sơ cho ${pets.length} thú cưng` : 'Chưa có bé cưng nào trong danh bạ'}
+                            {pets.length > 0 ? `Đang quản lý hồ sơ cho ${pets.length} thú cưng` : 'Chưa có bé cưng nào trong danh bạ (Hỗ trợ tạo 1 hoặc nhiều bé cùng lúc)'}
                         </Text>
                     </View>
                     <TouchableOpacity
@@ -317,14 +371,24 @@ export default function HomeScreen({ navigation }) {
                                             )}
                                         </View>
                                     </View>
-                                    <TouchableOpacity
-                                        style={styles.editPetBtn}
-                                        onPress={() => handleOpenEditPet(item)}
-                                        activeOpacity={0.7}
-                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                    >
-                                        <Ionicons name="create-outline" size={17} color={COLORS.primaryDark} />
-                                    </TouchableOpacity>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' }}>
+                                        <TouchableOpacity
+                                            style={styles.editPetBtn}
+                                            onPress={() => handleOpenEditPet(item)}
+                                            activeOpacity={0.7}
+                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        >
+                                            <Ionicons name="create-outline" size={17} color={COLORS.primaryDark} />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={styles.deletePetBtn}
+                                            onPress={() => handleOpenDeletePet(item)}
+                                            activeOpacity={0.7}
+                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        >
+                                            <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                                        </TouchableOpacity>
+                                    </View>
                                 </View>
 
                                 <View style={styles.petDetailsBox}>
@@ -412,99 +476,152 @@ export default function HomeScreen({ navigation }) {
                         </View>
 
                         <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                            <Text style={styles.inputLabel}>Tên bé cưng <Text style={styles.required}>*</Text></Text>
-                            <TextInput
-                                style={styles.input}
-                                value={petForm.name}
-                                onChangeText={(value) => updatePetForm('name', value)}
-                                placeholder="Ví dụ: Bông, Milu, Miu Miu..."
-                                placeholderTextColor={COLORS.textMuted}
-                                maxLength={50}
-                            />
+                            {petForms.map((row, idx) => (
+                                <View
+                                    key={idx}
+                                    style={[
+                                        idx > 0 && {
+                                            marginTop: 14,
+                                            paddingTop: 14,
+                                            borderTopWidth: 1,
+                                            borderTopColor: COLORS.border,
+                                        },
+                                    ]}
+                                >
+                                    {petForms.length > 1 && (
+                                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                            <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.primaryDark }}>
+                                                🐾 Thú cưng #{idx + 1}
+                                            </Text>
+                                            <TouchableOpacity
+                                                onPress={() => removePetFormRow(idx)}
+                                                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#FEE2E2', borderRadius: 8 }}
+                                            >
+                                                <Ionicons name="trash-outline" size={14} color="#DC2626" style={{ marginRight: 4 }} />
+                                                <Text style={{ fontSize: 12, fontWeight: '600', color: '#DC2626' }}>Bỏ dòng này</Text>
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
 
-                            <Text style={styles.inputLabel}>Loài <Text style={styles.required}>*</Text></Text>
-                            <View style={styles.optionRow}>
-                                {[
-                                    { value: 'dog', label: 'Chó', icon: 'dog' },
-                                    { value: 'cat', label: 'Mèo', icon: 'cat' },
-                                    { value: 'other', label: 'Khác', icon: 'paw' },
-                                ].map((option) => (
-                                    <TouchableOpacity
-                                        key={option.value}
-                                        style={[styles.option, petForm.species === option.value && styles.optionActive]}
-                                        onPress={() => updatePetForm('species', option.value)}
-                                    >
-                                        <FontAwesome5
-                                            name={option.icon}
-                                            size={14}
-                                            color={petForm.species === option.value ? COLORS.primaryDark : COLORS.textSecondary}
-                                            style={{ marginRight: 6 }}
-                                        />
-                                        <Text style={[styles.optionText, petForm.species === option.value && styles.optionTextActive]}>
-                                            {option.label}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-
-                            <Text style={styles.inputLabel}>Giống</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={petForm.breed}
-                                onChangeText={(value) => updatePetForm('breed', value)}
-                                placeholder="Ví dụ: Poodle, Corgi, Mèo Anh lông ngắn..."
-                                placeholderTextColor={COLORS.textMuted}
-                                maxLength={50}
-                            />
-
-                            <View style={styles.twoColumnRow}>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.inputLabel}>Cân nặng (kg)</Text>
+                                    <Text style={styles.inputLabel}>Tên bé cưng <Text style={styles.required}>*</Text></Text>
                                     <TextInput
                                         style={styles.input}
-                                        value={petForm.weight_kg}
-                                        onChangeText={(value) => updatePetForm('weight_kg', value.replace(',', '.'))}
-                                        placeholder="Ví dụ: 4.5"
+                                        value={row.name}
+                                        onChangeText={(value) => updatePetFormRow(idx, 'name', value)}
+                                        placeholder="Ví dụ: Bông, Milu, Miu Miu..."
                                         placeholderTextColor={COLORS.textMuted}
-                                        keyboardType="decimal-pad"
+                                        maxLength={50}
                                     />
-                                </View>
-                                <View style={{ flex: 1, marginLeft: 12 }}>
-                                    <Text style={styles.inputLabel}>Ngày sinh</Text>
+
+                                    <Text style={styles.inputLabel}>Loài <Text style={styles.required}>*</Text></Text>
+                                    <View style={styles.optionRow}>
+                                        {[
+                                            { value: 'dog', label: 'Chó', icon: 'dog' },
+                                            { value: 'cat', label: 'Mèo', icon: 'cat' },
+                                            { value: 'other', label: 'Khác', icon: 'paw' },
+                                        ].map((option) => (
+                                            <TouchableOpacity
+                                                key={option.value}
+                                                style={[styles.option, row.species === option.value && styles.optionActive]}
+                                                onPress={() => updatePetFormRow(idx, 'species', option.value)}
+                                            >
+                                                <FontAwesome5
+                                                    name={option.icon}
+                                                    size={14}
+                                                    color={row.species === option.value ? COLORS.primaryDark : COLORS.textSecondary}
+                                                    style={{ marginRight: 6 }}
+                                                />
+                                                <Text style={[styles.optionText, row.species === option.value && styles.optionTextActive]}>
+                                                    {option.label}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+
+                                    <Text style={styles.inputLabel}>Giống</Text>
                                     <TextInput
                                         style={styles.input}
-                                        value={petForm.birth_date}
-                                        onChangeText={(value) => updatePetForm('birth_date', value)}
-                                        placeholder="YYYY-MM-DD"
+                                        value={row.breed}
+                                        onChangeText={(value) => updatePetFormRow(idx, 'breed', value)}
+                                        placeholder="Ví dụ: Poodle, Corgi, Mèo Anh lông ngắn..."
                                         placeholderTextColor={COLORS.textMuted}
-                                        maxLength={10}
+                                        maxLength={50}
                                     />
-                                </View>
-                            </View>
 
-                            <Text style={styles.inputLabel}>Giới tính</Text>
-                            <View style={styles.optionRow}>
-                                {[
-                                    { value: 'male', label: 'Đực', icon: 'male' },
-                                    { value: 'female', label: 'Cái', icon: 'female' },
-                                ].map((option) => (
-                                    <TouchableOpacity
-                                        key={option.value}
-                                        style={[styles.option, petForm.gender === option.value && styles.optionActive]}
-                                        onPress={() => updatePetForm('gender', option.value)}
-                                    >
-                                        <Ionicons
-                                            name={option.icon}
-                                            size={14}
-                                            color={petForm.gender === option.value ? COLORS.primaryDark : COLORS.textSecondary}
-                                            style={{ marginRight: 6 }}
-                                        />
-                                        <Text style={[styles.optionText, petForm.gender === option.value && styles.optionTextActive]}>
-                                            {option.label}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
+                                    <View style={styles.twoColumnRow}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.inputLabel}>Cân nặng (kg)</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                value={row.weight_kg}
+                                                onChangeText={(value) => updatePetFormRow(idx, 'weight_kg', value.replace(',', '.'))}
+                                                placeholder="Ví dụ: 4.5"
+                                                placeholderTextColor={COLORS.textMuted}
+                                                keyboardType="decimal-pad"
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1, marginLeft: 12 }}>
+                                            <Text style={styles.inputLabel}>Ngày sinh</Text>
+                                            <TextInput
+                                                style={styles.input}
+                                                value={row.birth_date}
+                                                onChangeText={(value) => updatePetFormRow(idx, 'birth_date', value)}
+                                                placeholder="YYYY-MM-DD"
+                                                placeholderTextColor={COLORS.textMuted}
+                                                maxLength={10}
+                                            />
+                                        </View>
+                                    </View>
+
+                                    <Text style={styles.inputLabel}>Giới tính</Text>
+                                    <View style={styles.optionRow}>
+                                        {[
+                                            { value: 'male', label: 'Đực', icon: 'male' },
+                                            { value: 'female', label: 'Cái', icon: 'female' },
+                                        ].map((option) => (
+                                            <TouchableOpacity
+                                                key={option.value}
+                                                style={[styles.option, row.gender === option.value && styles.optionActive]}
+                                                onPress={() => updatePetFormRow(idx, 'gender', option.value)}
+                                            >
+                                                <Ionicons
+                                                    name={option.icon}
+                                                    size={14}
+                                                    color={row.gender === option.value ? COLORS.primaryDark : COLORS.textSecondary}
+                                                    style={{ marginRight: 6 }}
+                                                />
+                                                <Text style={[styles.optionText, row.gender === option.value && styles.optionTextActive]}>
+                                                    {option.label}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                </View>
+                            ))}
+
+                            <TouchableOpacity
+                                style={{
+                                    marginTop: 14,
+                                    paddingVertical: 10,
+                                    paddingHorizontal: 14,
+                                    borderRadius: 10,
+                                    borderWidth: 1,
+                                    borderStyle: 'dashed',
+                                    borderColor: COLORS.primary,
+                                    backgroundColor: '#F0FDF4',
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}
+                                onPress={addAnotherPetRow}
+                                disabled={submitting}
+                                activeOpacity={0.8}
+                            >
+                                <Ionicons name="add-circle-outline" size={18} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.primaryDark }}>
+                                    Thêm bé khác cùng lúc (Tạo hàng loạt)
+                                </Text>
+                            </TouchableOpacity>
 
                             <TouchableOpacity
                                 style={styles.submitButton}
@@ -517,7 +634,9 @@ export default function HomeScreen({ navigation }) {
                                 ) : (
                                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                         <Ionicons name="save-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
-                                        <Text style={styles.submitButtonText}>Lưu thông tin bé</Text>
+                                        <Text style={styles.submitButtonText}>
+                                            {petForms.length > 1 ? `Lưu hàng loạt (${petForms.length} bé)` : 'Lưu thông tin bé'}
+                                        </Text>
                                     </View>
                                 )}
                             </TouchableOpacity>
@@ -663,6 +782,83 @@ export default function HomeScreen({ navigation }) {
                         </ScrollView>
                     </View>
                 </KeyboardAvoidingView>
+            </Modal>
+
+            {/* Modal Xác Nhận Xóa Thú Cưng */}
+            <Modal visible={deletingPet !== null} transparent animationType="fade" onRequestClose={() => setDeletingPet(null)}>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxWidth: 460 }]}>
+                        <View style={styles.modalHeader}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Ionicons name="trash-outline" size={20} color="#DC2626" />
+                                <Text style={[styles.modalTitle, { color: '#991B1B' }]}>Xóa hồ sơ bé cưng</Text>
+                            </View>
+                            <TouchableOpacity
+                                style={styles.closeBtnBox}
+                                onPress={() => setDeletingPet(null)}
+                                disabled={deletingSubmitting}
+                            >
+                                <Ionicons name="close" size={20} color={COLORS.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <Text style={{ fontSize: 14, color: COLORS.text, lineHeight: 21, marginBottom: 12 }}>
+                            Bạn có chắc chắn muốn xóa bé <Text style={{ fontWeight: 'bold', color: COLORS.primaryDark }}>{deletingPet?.name}</Text> khỏi danh sách thú cưng hiện tại không?
+                        </Text>
+
+                        <View style={{ backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, padding: 12, marginBottom: 14 }}>
+                            <Text style={{ fontSize: 12, color: COLORS.textSecondary, lineHeight: 18 }}>
+                                • Sau khi xóa, bạn sẽ có thêm trống <Text style={{ fontWeight: 'bold' }}>1 suất</Text> trong hạn mức 5 thú cưng.{'\n'}
+                                • Các bệnh án, đơn thuốc và hóa đơn thanh toán cũ (nếu có) vẫn được hệ thống lưu trữ an toàn.
+                            </Text>
+                        </View>
+
+                        {deleteError ? (
+                            <View style={{ backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5', borderRadius: 10, padding: 12, marginBottom: 14, flexDirection: 'row', alignItems: 'flex-start' }}>
+                                <Ionicons name="alert-circle" size={18} color="#DC2626" style={{ marginRight: 6, marginTop: 1 }} />
+                                <Text style={{ fontSize: 13, color: '#B91C1C', flex: 1, lineHeight: 18, fontWeight: '600' }}>
+                                    {deleteError}
+                                </Text>
+                            </View>
+                        ) : null}
+
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <TouchableOpacity
+                                style={{
+                                    flex: 1,
+                                    paddingVertical: 12,
+                                    borderRadius: 12,
+                                    backgroundColor: COLORS.surfaceSubtle,
+                                    borderWidth: 1,
+                                    borderColor: COLORS.border,
+                                    alignItems: 'center',
+                                }}
+                                onPress={() => setDeletingPet(null)}
+                                disabled={deletingSubmitting}
+                            >
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.textSecondary }}>Giữ lại</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={{
+                                    flex: 1,
+                                    paddingVertical: 12,
+                                    borderRadius: 12,
+                                    backgroundColor: '#DC2626',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}
+                                onPress={handleConfirmDeletePet}
+                                disabled={deletingSubmitting}
+                            >
+                                {deletingSubmitting ? (
+                                    <ActivityIndicator color="#fff" size="small" />
+                                ) : (
+                                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#fff' }}>Xác nhận xóa</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
             </Modal>
         </ResponsiveContainer>
     );
@@ -893,6 +1089,17 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         borderWidth: 1,
         borderColor: COLORS.border,
+        alignSelf: 'flex-start',
+    },
+    deletePetBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: '#FEF2F2',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: '#FECACA',
         alignSelf: 'flex-start',
     },
     petName: {
