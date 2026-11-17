@@ -234,3 +234,98 @@ exports.setPharmacistActive = async (req, res) => {
     });
   }
 };
+
+/**
+ * List cashier accounts (admin only)
+ * GET /api/admin/cashiers
+ */
+exports.listCashiers = async (req, res) => {
+  try {
+    const [cashiers] = await db.query(`
+      SELECT id, full_name, email, phone, is_active, created_at
+      FROM Users
+      WHERE role = 'cashier'
+      ORDER BY created_at DESC
+    `);
+    return res.status(200).json({ success: true, data: cashiers });
+  } catch (error) {
+    console.error('LIST_CASHIERS_ERROR:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy danh sách thu ngân. Vui lòng thử lại sau.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+/**
+ * Create a cashier account (admin only)
+ * POST /api/admin/cashiers
+ */
+exports.createCashier = async (req, res) => {
+  try {
+    const { full_name, email, password, phone } = req.body;
+    if (!full_name || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Vui lòng điền đủ thông tin' });
+    }
+
+    const [existing] = await db.query('SELECT id FROM Users WHERE email = ?', [email]);
+    if (existing.length > 0) {
+      return res.status(400).json({ success: false, message: 'Email đã tồn tại trên hệ thống' });
+    }
+
+    const password_hash = await bcrypt.hash(password, 10);
+    const [result] = await db.query(
+      'INSERT INTO Users (full_name, email, password_hash, phone, role) VALUES (?, ?, ?, ?, "cashier")',
+      [full_name, email, password_hash, phone || null]
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: 'Tạo tài khoản thu ngân thành công',
+      data: { cashier_id: result.insertId }
+    });
+  } catch (error) {
+    console.error('CREATE_CASHIER_ERROR:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi tạo tài khoản thu ngân. Vui lòng thử lại sau.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+/**
+ * Lock/unlock a cashier account (admin only)
+ * PATCH /api/admin/cashiers/:id/active
+ */
+exports.setCashierActive = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { is_active } = req.body;
+
+    if (typeof is_active !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'Vui lòng cung cấp trạng thái is_active hợp lệ' });
+    }
+
+    const [result] = await db.query(
+      "UPDATE Users SET is_active = ? WHERE id = ? AND role = 'cashier'",
+      [is_active, id]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản thu ngân' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: is_active ? 'Đã mở khóa tài khoản thu ngân' : 'Đã khóa tài khoản thu ngân'
+    });
+  } catch (error) {
+    console.error('SET_CASHIER_ACTIVE_ERROR:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi cập nhật trạng thái tài khoản. Vui lòng thử lại sau.',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};

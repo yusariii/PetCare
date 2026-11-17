@@ -25,3 +25,9 @@ export const listPharmacistsApi = () => client.get('/admin/pharmacists');
 export const createPharmacistApi = (payload) => client.post('/admin/pharmacists', payload);
 
 export const setPharmacistActiveApi = (id, isActive) => client.patch(`/admin/pharmacists/${id}/active`, { is_active: isActive });
+
+export const listCashiersApi = () => client.get('/admin/cashiers');
+
+export const createCashierApi = (payload) => client.post('/admin/cashiers', payload);
+
+export const setCashierActiveApi = (id, isActive) => client.patch(`/admin/cashiers/${id}/active`, { is_active: isActive });

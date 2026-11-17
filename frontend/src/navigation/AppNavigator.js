@@ -19,6 +19,7 @@ import KnowledgeBaseScreen from '../screens/Doctor/KnowledgeBaseScreen';
 import AdminDoctorsScreen from '../screens/Admin/AdminDoctorsScreen';
 import AdminMedicinesScreen from '../screens/Admin/AdminMedicinesScreen';
 import AdminMedicineOrdersScreen from '../screens/Admin/AdminMedicineOrdersScreen';
+import CashierScreen from '../screens/Cashier/CashierScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -51,6 +52,10 @@ function renderTabIcon(routeName, isFocused, size = 18) {
             return <MaterialCommunityIcons name="package-variant-closed" size={size + 2} color={color} />;
         case 'AdminMedicineOrders':
             return <Ionicons name={isFocused ? 'receipt' : 'receipt-outline'} size={size} color={color} />;
+        case 'CashierInvoices':
+            return <Ionicons name={isFocused ? 'cash' : 'cash-outline'} size={size} color={color} />;
+        case 'CashierPaid':
+            return <Ionicons name={isFocused ? 'checkmark-done-circle' : 'checkmark-done-circle-outline'} size={size} color={color} />;
         case 'Profile':
             return <Ionicons name={isFocused ? 'person' : 'person-outline'} size={size} color={color} />;
         default:
@@ -61,6 +66,7 @@ function renderTabIcon(routeName, isFocused, size = 18) {
 const ROLE_BADGES = {
     admin: { label: 'Quản trị viên', badgeBg: '#FEF3C7', textColor: '#B45309', iconName: 'shield-checkmark', IconComp: Ionicons },
     doctor: { label: 'Bác sĩ', badgeBg: '#E0F2FE', textColor: '#0369A1', iconName: 'stethoscope', IconComp: FontAwesome5 },
+    cashier: { label: 'Thu ngân', badgeBg: '#DCFCE7', textColor: '#15803D', iconName: 'cash', IconComp: Ionicons },
     pharmacist: { label: 'Dược sĩ', badgeBg: '#EDE9FE', textColor: '#6D28D9', iconName: 'pill', IconComp: MaterialCommunityIcons },
     customer: { label: 'Khách hàng', badgeBg: '#E6FFFA', textColor: '#0F766E', iconName: 'paw', IconComp: FontAwesome5 },
 };
@@ -231,6 +237,7 @@ export default function AppNavigator({ onLogout }) {
     const isDoctor = userRole === 'doctor';
     const isAdmin = userRole === 'admin';
     const isPharmacist = userRole === 'pharmacist';
+    const isCashier = userRole === 'cashier';
 
     return (
         <Tab.Navigator
@@ -252,6 +259,11 @@ export default function AppNavigator({ onLogout }) {
                     <Tab.Screen name="DoctorAnalytics" component={DoctorAnalyticsScreen} options={{ tabBarLabel: 'Thống kê' }} />
                     <Tab.Screen name="AdminMedicines" component={AdminMedicinesScreen} options={{ tabBarLabel: 'Kho thuốc' }} />
                     <Tab.Screen name="KnowledgeBase" component={KnowledgeBaseScreen} options={{ tabBarLabel: 'Tri thức AI' }} />
+                </>
+            ) : isCashier ? (
+                <>
+                    <Tab.Screen name="CashierInvoices" component={CashierScreen} options={{ tabBarLabel: 'Chờ thanh toán' }} />
+                    <Tab.Screen name="CashierPaid" component={CashierScreen} initialParams={{ mode: 'paid' }} options={{ tabBarLabel: 'Đã thanh toán' }} />
                 </>
             ) : isPharmacist ? (
                 <>

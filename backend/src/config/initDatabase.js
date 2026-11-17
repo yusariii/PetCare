@@ -34,7 +34,7 @@ const initDatabase = async () => {
         email VARCHAR(100) NOT NULL UNIQUE,
         password_hash VARCHAR(255) NOT NULL,
         phone VARCHAR(20),
-        role ENUM('customer', 'doctor', 'admin', 'pharmacist') NOT NULL DEFAULT 'customer',
+        role ENUM('customer', 'doctor', 'admin', 'pharmacist', 'cashier') NOT NULL DEFAULT 'customer',
         is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_email (email),
@@ -46,7 +46,7 @@ const initDatabase = async () => {
     // Migration: mở rộng role sang 'admin' và thêm cờ khoá tài khoản (bỏ qua nếu DB đã tạo từ trước)
     try {
       await connection.execute(`
-        ALTER TABLE Users MODIFY COLUMN role ENUM('customer', 'doctor', 'admin', 'pharmacist') NOT NULL DEFAULT 'customer'
+        ALTER TABLE Users MODIFY COLUMN role ENUM('customer', 'doctor', 'admin', 'pharmacist', 'cashier') NOT NULL DEFAULT 'customer'
       `);
     } catch (alterError) {
       console.warn('⚠️  Không thể cập nhật ENUM role của Users:', alterError.message);
@@ -107,11 +107,21 @@ const initDatabase = async () => {
         weight_kg DECIMAL(4,2),
         birth_date DATE,
         gender ENUM('male', 'female'),
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE CASCADE,
         INDEX idx_user_id (user_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    try {
+      await connection.execute(`
+        ALTER TABLE Pets ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE AFTER gender
+      `);
+    } catch (alterError) {
+      if (alterError.code !== 'ER_DUP_FIELDNAME') {
+        throw alterError;
+      }
+    }
     console.log('✅ Bảng Pets được tạo');
 
     // 4. Bảng Services

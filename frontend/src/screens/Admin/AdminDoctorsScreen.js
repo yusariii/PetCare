@@ -23,6 +23,9 @@ import {
   listPharmacistsApi,
   createPharmacistApi,
   setPharmacistActiveApi,
+  listCashiersApi,
+  createCashierApi,
+  setCashierActiveApi,
 } from '../../api/adminApi';
 import { getRoomsApi, assignDoctorToRoomApi } from '../../api/roomApi';
 
@@ -30,7 +33,8 @@ export default function AdminDoctorsScreen() {
   const { isTabletOrDesktop } = useResponsive();
   const [staffRole, setStaffRole] = useState('doctor');
   const isDoctorTab = staffRole === 'doctor';
-  const roleLabel = isDoctorTab ? 'bác sĩ' : 'dược sĩ';
+  const isCashierTab = staffRole === 'cashier';
+  const roleLabel = isDoctorTab ? 'bác sĩ' : isCashierTab ? 'thu ngân' : 'dược sĩ';
   const [doctors, setDoctors] = useState([]);
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -43,8 +47,13 @@ export default function AdminDoctorsScreen() {
   const loadData = async () => {
     try {
       setLoading(true);
+      const staffFetch = isDoctorTab
+        ? listDoctorsApi()
+        : isCashierTab
+        ? listCashiersApi()
+        : listPharmacistsApi();
       const [staffRes, roomsRes] = await Promise.all([
-        isDoctorTab ? listDoctorsApi() : listPharmacistsApi(),
+        staffFetch,
         getRoomsApi(),
       ]);
       setDoctors(staffRes.data.success ? staffRes.data.data || [] : []);
@@ -73,8 +82,13 @@ export default function AdminDoctorsScreen() {
     }
     try {
       setSaving(true);
-      if (isDoctorTab) await createDoctorApi(form);
-      else await createPharmacistApi({ full_name: form.full_name, email: form.email, password: form.password, phone: form.phone });
+      if (isDoctorTab) {
+        await createDoctorApi(form);
+      } else if (isCashierTab) {
+        await createCashierApi({ full_name: form.full_name, email: form.email, password: form.password, phone: form.phone });
+      } else {
+        await createPharmacistApi({ full_name: form.full_name, email: form.email, password: form.password, phone: form.phone });
+      }
       setCreateVisible(false);
       setForm({ full_name: '', email: '', password: '', phone: '', room_id: null });
       await loadData();
@@ -88,7 +102,12 @@ export default function AdminDoctorsScreen() {
 
   const toggleActive = async (doctor) => {
     try {
-      await (isDoctorTab ? setDoctorActiveApi : setPharmacistActiveApi)(doctor.id, !doctor.is_active);
+      const toggleFn = isDoctorTab
+        ? setDoctorActiveApi
+        : isCashierTab
+        ? setCashierActiveApi
+        : setPharmacistActiveApi;
+      await toggleFn(doctor.id, !doctor.is_active);
       await loadData();
     } catch (error) {
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể cập nhật trạng thái tài khoản');
@@ -125,6 +144,11 @@ export default function AdminDoctorsScreen() {
       label: 'Dược sĩ',
       icon: (color) => <MaterialCommunityIcons name="pill" size={15} color={color} />,
     },
+    {
+      value: 'cashier',
+      label: 'Thu ngân',
+      icon: (color) => <Ionicons name="cash-outline" size={15} color={color} />,
+    },
   ];
 
   return (
@@ -144,6 +168,8 @@ export default function AdminDoctorsScreen() {
             <Text style={styles.subtitle}>
               {isDoctorTab
                 ? 'Quản lý tài khoản bác sĩ, phân công phòng chuyên khoa và trạng thái hoạt động.'
+                : isCashierTab
+                ? 'Quản lý tài khoản thu ngân phụ trách thanh toán viện phí tập trung tại quầy.'
                 : 'Quản lý tài khoản dược sĩ phụ trách quầy thuốc bệnh viện.'}
             </Text>
           </View>
@@ -200,7 +226,13 @@ export default function AdminDoctorsScreen() {
                       </View>
                       <View style={{ flex: 1, marginRight: 8 }}>
                         <Text style={styles.name} numberOfLines={1}>{doctor.full_name}</Text>
-                        <Text style={styles.roleSub}>{isDoctorTab ? 'Bác sĩ chuyên khoa' : 'Dược sĩ quầy thuốc'}</Text>
+                        <Text style={styles.roleSub}>
+                          {isDoctorTab
+                            ? 'Bác sĩ chuyên khoa'
+                            : isCashierTab
+                            ? 'Thu ngân viện phí'
+                            : 'Dược sĩ quầy thuốc'}
+                        </Text>
                       </View>
                     </View>
 

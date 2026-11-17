@@ -53,38 +53,38 @@ const seedData = async () => {
         roomMap[r.room_code] = r.id;
       });
 
-      // Thêm Dịch vụ theo phòng
+      // Thêm Dịch vụ theo phòng (Đảm bảo tổng duration_minutes của tất cả dịch vụ trong 1 phòng <= 60 / max_slot_per_hour)
       const servicesData = [
-        // P101 - Tiếp đón
+        // P101 - Tiếp đón (3 ca/giờ -> tối đa 20 phút/ca)
         { room_code: 'P101', service_name: 'Tiếp đón & Tư vấn Ban đầu', price: 100000, duration_minutes: 15, description: 'Tiếp đón, tư vấn ban đầu' },
         
-        // P102 - Khám Nội & Tiêm
-        { room_code: 'P102', service_name: 'Khám Nội Tổng Quát', price: 200000, duration_minutes: 30, description: 'Khám bệnh nội tạng, kiểm tra sức khỏe toàn bộ' },
-        { room_code: 'P102', service_name: 'Tiêm Chủng Cơ Bản (3 loại)', price: 150000, duration_minutes: 20, description: 'Tiêm phòng ngừa các bệnh cơ bản' },
-        { room_code: 'P102', service_name: 'Tiêm Chủng Mở Rộng (5 loại)', price: 250000, duration_minutes: 30, description: 'Tiêm phòng ngừa toàn diện' },
-        { room_code: 'P102', service_name: 'Kỹ Thuật Truyền Dịch IV', price: 300000, duration_minutes: 45, description: 'Truyền dịch tĩnh mạch điều trị' },
+        // P102 - Khám Nội & Tiêm (2 ca/giờ -> tối đa 30 phút/ca)
+        { room_code: 'P102', service_name: 'Khám Nội Tổng Quát', price: 200000, duration_minutes: 10, description: 'Khám bệnh nội tạng, kiểm tra sức khỏe toàn bộ' },
+        { room_code: 'P102', service_name: 'Tiêm Chủng Cơ Bản (3 loại)', price: 150000, duration_minutes: 5, description: 'Tiêm phòng ngừa các bệnh cơ bản' },
+        { room_code: 'P102', service_name: 'Tiêm Chủng Mở Rộng (5 loại)', price: 250000, duration_minutes: 5, description: 'Tiêm phòng ngừa toàn diện' },
+        { room_code: 'P102', service_name: 'Kỹ Thuật Truyền Dịch IV', price: 300000, duration_minutes: 10, description: 'Truyền dịch tĩnh mạch điều trị' },
         
-        // P103 - Phẫu thuật
-        { room_code: 'P103', service_name: 'Phẫu Thuật Triệt Sản / Hoàn Toàn (Nữ)', price: 2000000, duration_minutes: 60, description: 'Phẫu thuật triệt sản cho thú cưng cái' },
-        { room_code: 'P103', service_name: 'Phẫu Thuật Triệt Sản (Nam)', price: 1500000, duration_minutes: 45, description: 'Phẫu thuật triệt sản cho thú cưng đực' },
-        { room_code: 'P103', service_name: 'Phẫu Thuật Cắt Tuyến Hạng Nhân', price: 1000000, duration_minutes: 30, description: 'Cắt tuyến hạng nhân' },
-        { room_code: 'P103', service_name: 'Nhổ Răng / Cạo Vôi Răng', price: 500000, duration_minutes: 30, description: 'Vệ sinh hoặc nhổ răng sâu' },
+        // P103 - Phẫu thuật (1 ca/giờ -> tối đa 60 phút/ca)
+        { room_code: 'P103', service_name: 'Phẫu Thuật Triệt Sản / Hoàn Toàn (Nữ)', price: 2000000, duration_minutes: 20, description: 'Phẫu thuật triệt sản cho thú cưng cái' },
+        { room_code: 'P103', service_name: 'Phẫu Thuật Triệt Sản (Nam)', price: 1500000, duration_minutes: 15, description: 'Phẫu thuật triệt sản cho thú cưng đực' },
+        { room_code: 'P103', service_name: 'Phẫu Thuật Cắt Tuyến Hạng Nhân', price: 1000000, duration_minutes: 15, description: 'Cắt tuyến hạng nhân' },
+        { room_code: 'P103', service_name: 'Nhổ Răng / Cạo Vôi Răng', price: 500000, duration_minutes: 10, description: 'Vệ sinh hoặc nhổ răng sâu' },
         
-        // P201 - Da liễu & Spa
-        { room_code: 'P201', service_name: 'Tắm Gội Spa Tiêu Chuẩn', price: 300000, duration_minutes: 60, description: 'Tắm gội sạch sẽ, dưỡng lông' },
-        { room_code: 'P201', service_name: 'Cắt Lông Thẩm Mỹ', price: 400000, duration_minutes: 90, description: 'Cắt lông theo mẫu, tạo kiểu' },
-        { room_code: 'P201', service_name: 'Khám & Điều Trị Da Liễu', price: 300000, duration_minutes: 30, description: 'Khám bệnh da, điều trị viêm ngoài da' },
-        { room_code: 'P201', service_name: 'Cắt Móng & Vệ Sinh Tai', price: 150000, duration_minutes: 20, description: 'Cắt móng, vệ sinh tai, mắt' },
+        // P201 - Da liễu & Spa (2 ca/giờ -> tối đa 30 phút/ca)
+        { room_code: 'P201', service_name: 'Tắm Gội Spa Tiêu Chuẩn', price: 300000, duration_minutes: 10, description: 'Tắm gội sạch sẽ, dưỡng lông' },
+        { room_code: 'P201', service_name: 'Cắt Lông Thẩm Mỹ', price: 400000, duration_minutes: 10, description: 'Cắt lông theo mẫu, tạo kiểu' },
+        { room_code: 'P201', service_name: 'Khám & Điều Trị Da Liễu', price: 300000, duration_minutes: 5, description: 'Khám bệnh da, điều trị viêm ngoài da' },
+        { room_code: 'P201', service_name: 'Cắt Móng & Vệ Sinh Tai', price: 150000, duration_minutes: 5, description: 'Cắt móng, vệ sinh tai, mắt' },
         
-        // P202 - Xét nghiệm
-        { room_code: 'P202', service_name: 'Siêu Âm Chẩn Đoán', price: 400000, duration_minutes: 30, description: 'Siêu âm toàn bộ cơ quan nội tạng' },
-        { room_code: 'P202', service_name: 'Chụp X-Ray Chẩn Đoán', price: 350000, duration_minutes: 20, description: 'Chụp X-ray các bộ phận' },
-        { room_code: 'P202', service_name: 'Xét Nghiệm Máu Toàn Diện', price: 250000, duration_minutes: 15, description: 'Xét nghiệm máu CBC, Biochemistry' },
-        { room_code: 'P202', service_name: 'Xét Nghiệm Nước Tiểu & Phân', price: 200000, duration_minutes: 15, description: 'Xét nghiệm nước tiểu và phân' },
+        // P202 - Xét nghiệm (2 ca/giờ -> tối đa 30 phút/ca)
+        { room_code: 'P202', service_name: 'Siêu Âm Chẩn Đoán', price: 400000, duration_minutes: 10, description: 'Siêu âm toàn bộ cơ quan nội tạng' },
+        { room_code: 'P202', service_name: 'Chụp X-Ray Chẩn Đoán', price: 350000, duration_minutes: 10, description: 'Chụp X-ray các bộ phận' },
+        { room_code: 'P202', service_name: 'Xét Nghiệm Máu Toàn Diện', price: 250000, duration_minutes: 5, description: 'Xét nghiệm máu CBC, Biochemistry' },
+        { room_code: 'P202', service_name: 'Xét Nghiệm Nước Tiểu & Phân', price: 200000, duration_minutes: 5, description: 'Xét nghiệm nước tiểu và phân' },
         
-        // P203 - Hậu phẫu
-        { room_code: 'P203', service_name: 'Theo Dõi Hậu Phẫu (1 đêm)', price: 500000, duration_minutes: 0, description: 'Lưu trú theo dõi sau phẫu thuật' },
-        { room_code: 'P203', service_name: 'Điều Trị Nằm Viện (1 ngày)', price: 300000, duration_minutes: 0, description: 'Lưu trú điều trị bệnh nặng' },
+        // P203 - Hậu phẫu (2 ca/giờ -> tối đa 30 phút/ca làm thủ tục lưu trú)
+        { room_code: 'P203', service_name: 'Theo Dõi Hậu Phẫu (1 đêm)', price: 500000, duration_minutes: 15, description: 'Lưu trú theo dõi sau phẫu thuật' },
+        { room_code: 'P203', service_name: 'Điều Trị Nằm Viện (1 ngày)', price: 300000, duration_minutes: 15, description: 'Lưu trú điều trị bệnh nặng' },
       ];
 
       for (const service of servicesData) {
@@ -98,7 +98,35 @@ const seedData = async () => {
       }
       console.log('✅ Đã thêm dữ liệu dịch vụ');
     } else {
-      console.log('⏭️  Dịch vụ đã tồn tại, bỏ qua');
+      // Đồng bộ chuẩn lại thời lượng dịch vụ (duration_minutes) để tổng thời gian các dịch vụ trong 1 phòng luôn khớp với số slot/giờ của phòng đó
+      const durationUpdates = [
+        { service_name: 'Tiếp đón & Tư vấn Ban đầu', duration_minutes: 15 },
+        { service_name: 'Khám Nội Tổng Quát', duration_minutes: 10 },
+        { service_name: 'Tiêm Chủng Cơ Bản (3 loại)', duration_minutes: 5 },
+        { service_name: 'Tiêm Chủng Mở Rộng (5 loại)', duration_minutes: 5 },
+        { service_name: 'Kỹ Thuật Truyền Dịch IV', duration_minutes: 10 },
+        { service_name: 'Phẫu Thuật Triệt Sản / Hoàn Toàn (Nữ)', duration_minutes: 20 },
+        { service_name: 'Phẫu Thuật Triệt Sản (Nam)', duration_minutes: 15 },
+        { service_name: 'Phẫu Thuật Cắt Tuyến Hạng Nhân', duration_minutes: 15 },
+        { service_name: 'Nhổ Răng / Cạo Vôi Răng', duration_minutes: 10 },
+        { service_name: 'Tắm Gội Spa Tiêu Chuẩn', duration_minutes: 10 },
+        { service_name: 'Cắt Lông Thẩm Mỹ', duration_minutes: 10 },
+        { service_name: 'Khám & Điều Trị Da Liễu', duration_minutes: 5 },
+        { service_name: 'Cắt Móng & Vệ Sinh Tai', duration_minutes: 5 },
+        { service_name: 'Siêu Âm Chẩn Đoán', duration_minutes: 10 },
+        { service_name: 'Chụp X-Ray Chẩn Đoán', duration_minutes: 10 },
+        { service_name: 'Xét Nghiệm Máu Toàn Diện', duration_minutes: 5 },
+        { service_name: 'Xét Nghiệm Nước Tiểu & Phân', duration_minutes: 5 },
+        { service_name: 'Theo Dõi Hậu Phẫu (1 đêm)', duration_minutes: 15 },
+        { service_name: 'Điều Trị Nằm Viện (1 ngày)', duration_minutes: 15 },
+      ];
+      for (const item of durationUpdates) {
+        await connection.execute(
+          'UPDATE Services SET duration_minutes = ? WHERE service_name = ?',
+          [item.duration_minutes, item.service_name]
+        );
+      }
+      console.log('⏭️  Dịch vụ đã tồn tại, đã đồng bộ chuẩn thời lượng dịch vụ theo slot phòng');
     }
 
     // Kiểm tra tài liệu y khoa cho RAG (cơ sở tri thức của bác sĩ)
@@ -171,6 +199,16 @@ const seedData = async () => {
 
     // Tài khoản dược sĩ mẫu phụ trách quầy thuốc và kho
     const [existingPharmacists] = await connection.execute("SELECT COUNT(*) as count FROM Users WHERE role = 'pharmacist'");
+    const [existingCashiers] = await connection.execute("SELECT COUNT(*) as count FROM Users WHERE role = 'cashier'");
+    if (existingCashiers[0].count === 0) {
+      const cashierPassword = process.env.CASHIER_DEFAULT_PASSWORD || 'Cashier@123';
+      const cashierHash = await bcrypt.hash(cashierPassword, 10);
+      await connection.execute(
+        'INSERT INTO Users (full_name, email, password_hash, phone, role) VALUES (?, ?, ?, ?, "cashier")',
+        ['Thu ngân viện phí', 'cashier@petcare.local', cashierHash, null]
+      );
+      console.log(`✅ Đã tạo tài khoản thu ngân mặc định (cashier@petcare.local / ${cashierPassword}) - vui lòng đổi mật khẩu sau khi đăng nhập`);
+    }
     if (existingPharmacists[0].count === 0) {
       const pharmacistPassword = process.env.PHARMACIST_DEFAULT_PASSWORD || 'Pharma@123';
       const pharmacistHash = await bcrypt.hash(pharmacistPassword, 10);

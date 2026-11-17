@@ -4,7 +4,7 @@ const { getOwnRoomId } = require('../utils/doctorScope');
 let tablesEnsured = false;
 
 /**
- * Đảm bảo bảng Invoices và Invoice_Items luôn tồn tại kể cả khi server chưa khởi động lại
+ * Đảm bảo bảng Invoices và Invoice_Items luôn tồn tại và hỗ trợ đầy đủ đa phòng + thu ngân
  */
 const ensureInvoiceTables = async () => {
   if (tablesEnsured) return;
@@ -16,41 +16,52 @@ const ensureInvoiceTables = async () => {
       appointment_id INT NULL UNIQUE,
       user_id INT NULL,
       pet_id INT NULL,
-      room_id INT NOT NULL,
-      doctor_id INT NOT NULL,
+      room_id INT NULL,
+      doctor_id INT NULL,
+      cashier_id INT NULL,
       customer_name VARCHAR(100) NOT NULL,
       customer_phone VARCHAR(20) NULL,
       pet_name VARCHAR(50) NULL,
       pet_species ENUM('dog', 'cat', 'other') NOT NULL DEFAULT 'dog',
       total_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
       payment_status ENUM('pending', 'paid') NOT NULL DEFAULT 'pending',
+      paid_at TIMESTAMP NULL,
       notes TEXT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       FOREIGN KEY (appointment_id) REFERENCES Appointments(id) ON DELETE SET NULL,
       FOREIGN KEY (user_id) REFERENCES Users(id) ON DELETE SET NULL,
       FOREIGN KEY (pet_id) REFERENCES Pets(id) ON DELETE SET NULL,
-      FOREIGN KEY (room_id) REFERENCES Clinic_Rooms(id) ON DELETE RESTRICT,
-      FOREIGN KEY (doctor_id) REFERENCES Users(id) ON DELETE RESTRICT,
+      FOREIGN KEY (room_id) REFERENCES Clinic_Rooms(id) ON DELETE SET NULL,
+      FOREIGN KEY (doctor_id) REFERENCES Users(id) ON DELETE SET NULL,
+      FOREIGN KEY (cashier_id) REFERENCES Users(id) ON DELETE SET NULL,
       INDEX idx_invoice_type (invoice_type),
       INDEX idx_room_created (room_id, created_at),
       INDEX idx_doctor_id (doctor_id),
-      INDEX idx_user_id (user_id)
+      INDEX idx_user_id (user_id),
+      INDEX idx_payment_status (payment_status)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 
   const alterQueries = [
     "ALTER TABLE Invoices ADD COLUMN payment_status ENUM('pending', 'paid') NOT NULL DEFAULT 'paid' AFTER total_amount",
+    'ALTER TABLE Invoices ADD COLUMN paid_at TIMESTAMP NULL AFTER payment_status',
     'ALTER TABLE Invoices ADD COLUMN user_id INT NULL AFTER appointment_id',
-    'ALTER TABLE Invoices ADD COLUMN pet_id INT NULL AFTER user_id'
+    'ALTER TABLE Invoices ADD COLUMN pet_id INT NULL AFTER user_id',
+    'ALTER TABLE Invoices MODIFY COLUMN room_id INT NULL',
+    'ALTER TABLE Invoices MODIFY COLUMN doctor_id INT NULL',
+    'ALTER TABLE Invoices ADD COLUMN cashier_id INT NULL AFTER doctor_id',
+    'ALTER TABLE Invoices ADD COLUMN deposit_amount DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER total_amount',
+    'ALTER TABLE Appointments ADD COLUMN deposit_amount DECIMAL(12,2) NOT NULL DEFAULT 0 AFTER notes',
+    "ALTER TABLE Appointments ADD COLUMN deposit_status ENUM('none', 'paid', 'refunded', 'forfeited') NOT NULL DEFAULT 'none' AFTER deposit_amount",
+    "ALTER TABLE Appointments MODIFY COLUMN deposit_status ENUM('none', 'paid', 'refunded', 'forfeited') NOT NULL DEFAULT 'none'",
+    "ALTER TABLE Users MODIFY COLUMN role ENUM('customer', 'doctor', 'admin', 'pharmacist', 'cashier') NOT NULL DEFAULT 'customer'"
   ];
   for (const q of alterQueries) {
     try {
       await db.query(q);
     } catch (alterError) {
-      if (alterError.code !== 'ER_DUP_FIELDNAME') {
-        // ignore
-      }
+      // ignore if already exists
     }
   }
 
@@ -66,6 +77,47 @@ const ensureInvoiceTables = async () => {
       INDEX idx_invoice_id (invoice_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS Appointment_Room_Steps (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      appointment_id INT NOT NULL,
+      room_id INT NOT NULL,
+      referred_by_room_id INT NULL,
+      status ENUM('in_progress', 'completed') NOT NULL DEFAULT 'in_progress',
+      completed_at TIMESTAMP NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_app_room (appointment_id, room_id),
+      FOREIGN KEY (appointment_id) REFERENCES Appointments(id) ON DELETE CASCADE,
+      FOREIGN KEY (room_id) REFERENCES Clinic_Rooms(id) ON DELETE CASCADE,
+      FOREIGN KEY (referred_by_room_id) REFERENCES Clinic_Rooms(id) ON DELETE SET NULL,
+      INDEX idx_app_steps (appointment_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS User_Cancellation_Logs (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      appointment_id INT NULL,
+      log_type ENUM('cancelled', 'no_show') NOT NULL DEFAULT 'cancelled',
+      penalty_weight INT NOT NULL DEFAULT 1,
+      cancelled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_user_cancel_date (user_id, cancelled_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  const cancelLogAlterQueries = [
+    "ALTER TABLE User_Cancellation_Logs ADD COLUMN log_type ENUM('cancelled', 'no_show') NOT NULL DEFAULT 'cancelled' AFTER appointment_id",
+    'ALTER TABLE User_Cancellation_Logs ADD COLUMN penalty_weight INT NOT NULL DEFAULT 1 AFTER log_type'
+  ];
+  for (const q of cancelLogAlterQueries) {
+    try {
+      await db.query(q);
+    } catch (e) {
+      // ignore if already exists
+    }
+  }
 
   tablesEnsured = true;
 };
@@ -85,7 +137,7 @@ const generateInvoiceCode = (prefix = 'HD') => {
 };
 
 /**
- * Helper lấy chi tiết đầy đủ 1 hóa đơn theo ID
+ * Helper lấy chi tiết đầy đủ 1 hóa đơn theo ID (kèm thông tin phòng của từng dịch vụ)
  */
 const fetchFullInvoice = async (invoiceId, conn = db) => {
   const [invoices] = await conn.query(
@@ -93,10 +145,12 @@ const fetchFullInvoice = async (invoiceId, conn = db) => {
        inv.*,
        cr.room_code,
        cr.room_name,
-       u.full_name as doctor_name
+       u.full_name as doctor_name,
+       cu.full_name as cashier_name
      FROM Invoices inv
-     JOIN Clinic_Rooms cr ON cr.id = inv.room_id
+     LEFT JOIN Clinic_Rooms cr ON cr.id = inv.room_id
      LEFT JOIN Users u ON u.id = inv.doctor_id
+     LEFT JOIN Users cu ON cu.id = inv.cashier_id
      WHERE inv.id = ?`,
     [invoiceId]
   );
@@ -105,10 +159,19 @@ const fetchFullInvoice = async (invoiceId, conn = db) => {
   const invoice = invoices[0];
 
   const [items] = await conn.query(
-    `SELECT id, service_id, service_name, unit_price
-     FROM Invoice_Items
-     WHERE invoice_id = ?
-     ORDER BY id ASC`,
+    `SELECT
+       ii.id,
+       ii.service_id,
+       ii.service_name,
+       ii.unit_price,
+       s.room_id as service_room_id,
+       scr.room_code as service_room_code,
+       scr.room_name as service_room_name
+     FROM Invoice_Items ii
+     LEFT JOIN Services s ON s.id = ii.service_id
+     LEFT JOIN Clinic_Rooms scr ON scr.id = s.room_id
+     WHERE ii.invoice_id = ?
+     ORDER BY ii.id ASC`,
     [invoiceId]
   );
 
@@ -116,35 +179,148 @@ const fetchFullInvoice = async (invoiceId, conn = db) => {
   return invoice;
 };
 
+exports.fetchFullInvoice = fetchFullInvoice;
+
 /**
- * Lấy thông tin phòng khám của bác sĩ đang đăng nhập kèm danh sách dịch vụ của phòng đó
+ * Helper tự động đồng bộ / tạo hóa đơn chờ thanh toán (pending) cho 1 lịch khám
+ * Được gọi tự động khi Bác sĩ chỉ định dịch vụ hoặc đánh dấu Hoàn thành ca khám,
+ * giúp Thu ngân mở màn hình lên là thấy ngay hóa đơn với đầy đủ các dịch vụ đã làm ở tất cả các phòng.
+ */
+const syncAppointmentPendingInvoice = async (appointmentId, actorId = null, existingConn = null) => {
+  await ensureInvoiceTables();
+  const conn = existingConn || db;
+
+  const [appointments] = await conn.query(
+    `SELECT
+       a.id, a.room_id, a.doctor_id, a.service_id, a.status, a.pet_id, a.user_id,
+       COALESCE(a.deposit_amount, 0) as deposit_amount, a.deposit_status,
+       p.name as pet_name, p.species as pet_species,
+       u.full_name as customer_name, u.phone as customer_phone
+     FROM Appointments a
+     JOIN Pets p ON p.id = a.pet_id
+     JOIN Users u ON u.id = a.user_id
+     WHERE a.id = ?`,
+    [appointmentId]
+  );
+
+  if (appointments.length === 0) return null;
+  const appointment = appointments[0];
+
+  // Lấy toàn bộ service_ids hiện gắn với lịch khám (có thể thuộc nhiều phòng khác nhau)
+  const [appServiceRows] = await conn.query(
+    `SELECT DISTINCT id, service_name, price
+     FROM Services
+     WHERE id = ? OR id IN (
+       SELECT service_id FROM Appointment_Services WHERE appointment_id = ?
+     )
+     ORDER BY id ASC`,
+    [appointment.service_id, appointment.id]
+  );
+
+  if (appServiceRows.length === 0) return null;
+
+  const totalAmount = appServiceRows.reduce((sum, s) => sum + Number(s.price || 0), 0);
+  const depositAmount = appointment.deposit_status === 'paid' ? Number(appointment.deposit_amount || 0) : 0;
+  const normalizedSpecies = ['dog', 'cat', 'other'].includes(appointment.pet_species)
+    ? appointment.pet_species
+    : 'other';
+
+  const [existingInvoices] = await conn.query(
+    'SELECT id, payment_status FROM Invoices WHERE appointment_id = ?',
+    [appointment.id]
+  );
+
+  // Nếu hóa đơn đã thanh toán (paid) thì không ghi đè nữa
+  if (existingInvoices.length > 0 && existingInvoices[0].payment_status === 'paid') {
+    return fetchFullInvoice(existingInvoices[0].id, conn);
+  }
+
+  let invoiceId;
+  const doctorIdToSave = appointment.doctor_id || actorId || null;
+
+  if (existingInvoices.length > 0) {
+    invoiceId = existingInvoices[0].id;
+    await conn.query(
+      `UPDATE Invoices
+       SET user_id = ?,
+           pet_id = ?,
+           room_id = ?,
+           doctor_id = COALESCE(doctor_id, ?),
+           customer_name = ?,
+           customer_phone = ?,
+           pet_name = ?,
+           pet_species = ?,
+           total_amount = ?,
+           deposit_amount = ?,
+           payment_status = 'pending'
+       WHERE id = ?`,
+      [
+        appointment.user_id || null,
+        appointment.pet_id || null,
+        appointment.room_id,
+        doctorIdToSave,
+        appointment.customer_name,
+        appointment.customer_phone || null,
+        appointment.pet_name || null,
+        normalizedSpecies,
+        totalAmount,
+        depositAmount,
+        invoiceId
+      ]
+    );
+    await conn.query('DELETE FROM Invoice_Items WHERE invoice_id = ?', [invoiceId]);
+  } else {
+    const invoiceCode = generateInvoiceCode('HD');
+    const [insertRes] = await conn.query(
+      `INSERT INTO Invoices (
+         invoice_code, invoice_type, appointment_id, user_id, pet_id, room_id, doctor_id,
+         customer_name, customer_phone, pet_name, pet_species, total_amount, deposit_amount, payment_status, notes
+       ) VALUES (?, 'appointment', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL)`,
+      [
+        invoiceCode,
+        appointment.id,
+        appointment.user_id || null,
+        appointment.pet_id || null,
+        appointment.room_id,
+        doctorIdToSave,
+        appointment.customer_name,
+        appointment.customer_phone || null,
+        appointment.pet_name || null,
+        normalizedSpecies,
+        totalAmount,
+        depositAmount
+      ]
+    );
+    invoiceId = insertRes.insertId;
+  }
+
+  const itemValues = appServiceRows.map((s) => [
+    invoiceId,
+    s.id,
+    s.service_name,
+    Number(s.price)
+  ]);
+  await conn.query(
+    'INSERT INTO Invoice_Items (invoice_id, service_id, service_name, unit_price) VALUES ?',
+    [itemValues]
+  );
+
+  return fetchFullInvoice(invoiceId, conn);
+};
+
+exports.syncAppointmentPendingInvoice = syncAppointmentPendingInvoice;
+
+/**
+ * Lấy danh sách toàn bộ phòng khám và dịch vụ toàn viện (phục vụ Bác sĩ chỉ định dịch vụ đa phòng & Thu ngân thanh toán)
  * GET /api/invoices/my-room-services
  */
 exports.getMyRoomServices = async (req, res) => {
   try {
     await ensureInvoiceTables();
-    let roomId = req.query.room_id ? Number(req.query.room_id) : null;
+    let ownRoomId = null;
 
     if (req.user.role === 'doctor') {
-      const ownRoomId = await getOwnRoomId(req.user.id);
-      if (!ownRoomId) {
-        return res.status(404).json({
-          success: false,
-          message: 'Bạn chưa được phân công phụ trách phòng khám nào'
-        });
-      }
-      roomId = ownRoomId;
-    }
-
-    if (!roomId) {
-      const [firstRoom] = await db.query('SELECT id FROM Clinic_Rooms ORDER BY id ASC LIMIT 1');
-      if (firstRoom.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'Không tìm thấy phòng khám'
-        });
-      }
-      roomId = firstRoom[0].id;
+      ownRoomId = await getOwnRoomId(req.user.id);
     }
 
     const [rooms] = await db.query(
@@ -152,30 +328,27 @@ exports.getMyRoomServices = async (req, res) => {
               cr.doctor_id, u.full_name as doctor_name
        FROM Clinic_Rooms cr
        LEFT JOIN Users u ON u.id = cr.doctor_id
-       WHERE cr.id = ?`,
-      [roomId]
+       ORDER BY cr.room_code ASC`
     );
 
-    if (rooms.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy phòng khám'
-      });
-    }
-
-    const [services] = await db.query(
-      `SELECT id, room_id, service_name, description, price, duration_minutes
-       FROM Services
-       WHERE room_id = ?
-       ORDER BY id ASC`,
-      [roomId]
+    const [allServices] = await db.query(
+      `SELECT s.id, s.room_id, s.service_name, s.description, s.price, s.duration_minutes,
+              cr.room_code, cr.room_name
+       FROM Services s
+       JOIN Clinic_Rooms cr ON cr.id = s.room_id
+       ORDER BY cr.room_code ASC, s.id ASC`
     );
+
+    const currentRoom = ownRoomId
+      ? rooms.find((r) => Number(r.id) === Number(ownRoomId)) || rooms[0] || null
+      : rooms[0] || null;
 
     return res.status(200).json({
       success: true,
       data: {
-        room: rooms[0],
-        services
+        room: currentRoom,
+        rooms,
+        services: allServices
       }
     });
   } catch (error) {
@@ -189,9 +362,9 @@ exports.getMyRoomServices = async (req, res) => {
 };
 
 /**
- * Tạo hoặc cập nhật hóa đơn cho lịch khám đã hoàn thành
+ * Tạo hoặc cập nhật hóa đơn cho lịch khám đã hoàn thành (Thu ngân / Admin điều chỉnh dịch vụ đa phòng và tạo mã QR)
  * POST /api/invoices/appointment
- * Body: { appointment_id, service_ids: [1, 2], notes }
+ * Body: { appointment_id, service_ids: [1, 2, 15], notes }
  */
 exports.createOrUpdateAppointmentInvoice = async (req, res) => {
   let connection;
@@ -219,7 +392,8 @@ exports.createOrUpdateAppointmentInvoice = async (req, res) => {
 
     const [appointments] = await db.query(
       `SELECT
-         a.id, a.room_id, a.status, a.pet_id, a.user_id,
+         a.id, a.room_id, a.doctor_id, a.status, a.pet_id, a.user_id,
+         COALESCE(a.deposit_amount, 0) as deposit_amount, a.deposit_status,
          p.name as pet_name, p.species as pet_species,
          u.full_name as customer_name, u.phone as customer_phone
        FROM Appointments a
@@ -238,40 +412,33 @@ exports.createOrUpdateAppointmentInvoice = async (req, res) => {
 
     const appointment = appointments[0];
 
-    if (req.user.role === 'doctor') {
-      const ownRoomId = await getOwnRoomId(req.user.id);
-      if (!ownRoomId || ownRoomId !== appointment.room_id) {
-        return res.status(403).json({
-          success: false,
-          message: 'Bạn chỉ có thể tạo hóa đơn cho ca khám thuộc phòng mình phụ trách'
-        });
-      }
-    }
-
     if (appointment.status !== 'completed') {
       return res.status(400).json({
         success: false,
-        message: 'Chỉ có thể tạo hóa đơn cho ca khám đã hoàn thành'
+        message: 'Chỉ có thể xuất hóa đơn thanh toán cho ca khám đã hoàn thành'
       });
     }
 
+    // Cho phép chọn dịch vụ thuộc BẤT KỲ phòng khám nào trong viện (để thanh toán gộp 1 lần)
     const placeholders = uniqueServiceIds.map(() => '?').join(',');
     const [services] = await db.query(
-      `SELECT id, room_id, service_name, price
-       FROM Services
-       WHERE id IN (${placeholders}) AND room_id = ?
-       ORDER BY id ASC`,
-      [...uniqueServiceIds, appointment.room_id]
+      `SELECT s.id, s.room_id, s.service_name, s.price, cr.room_code, cr.room_name
+       FROM Services s
+       JOIN Clinic_Rooms cr ON cr.id = s.room_id
+       WHERE s.id IN (${placeholders})
+       ORDER BY cr.room_code ASC, s.id ASC`,
+      uniqueServiceIds
     );
 
     if (services.length !== uniqueServiceIds.length) {
       return res.status(400).json({
         success: false,
-        message: 'Có dịch vụ không hợp lệ hoặc không thuộc phòng khám của ca này'
+        message: 'Có dịch vụ không tồn tại trong hệ thống'
       });
     }
 
     const totalAmount = services.reduce((sum, s) => sum + Number(s.price || 0), 0);
+    const depositAmount = appointment.deposit_status === 'paid' ? Number(appointment.deposit_amount || 0) : 0;
     const normalizedSpecies = ['dog', 'cat', 'other'].includes(appointment.pet_species)
       ? appointment.pet_species
       : 'other';
@@ -279,7 +446,6 @@ exports.createOrUpdateAppointmentInvoice = async (req, res) => {
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // Kiểm tra xem lịch khám đã có hóa đơn chưa
     const [existingInvoices] = await connection.query(
       'SELECT id, invoice_code, payment_status FROM Invoices WHERE appointment_id = ?',
       [appointment.id]
@@ -315,12 +481,13 @@ exports.createOrUpdateAppointmentInvoice = async (req, res) => {
         `UPDATE Invoices
          SET user_id = ?,
              pet_id = ?,
-             doctor_id = ?,
+             cashier_id = ?,
              customer_name = ?,
              customer_phone = ?,
              pet_name = ?,
              pet_species = ?,
              total_amount = ?,
+             deposit_amount = ?,
              payment_status = 'pending',
              notes = ?
          WHERE id = ?`,
@@ -333,6 +500,7 @@ exports.createOrUpdateAppointmentInvoice = async (req, res) => {
           appointment.pet_name || null,
           normalizedSpecies,
           totalAmount,
+          depositAmount,
           notes ? notes.trim() : null,
           invoiceId
         ]
@@ -342,28 +510,35 @@ exports.createOrUpdateAppointmentInvoice = async (req, res) => {
       const invoiceCode = generateInvoiceCode('HD');
       const [insertRes] = await connection.query(
         `INSERT INTO Invoices (
-           invoice_code, invoice_type, appointment_id, user_id, pet_id, room_id, doctor_id,
-           customer_name, customer_phone, pet_name, pet_species, total_amount, payment_status, notes
-         ) VALUES (?, 'appointment', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+           invoice_code, invoice_type, appointment_id, user_id, pet_id, room_id, doctor_id, cashier_id,
+           customer_name, customer_phone, pet_name, pet_species, total_amount, deposit_amount, payment_status, notes
+         ) VALUES (?, 'appointment', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
         [
           invoiceCode,
           appointment.id,
           appointment.user_id || null,
           appointment.pet_id || null,
           appointment.room_id,
+          appointment.doctor_id || null,
           req.user.id,
           appointment.customer_name,
           appointment.customer_phone || null,
           appointment.pet_name || null,
           normalizedSpecies,
           totalAmount,
+          depositAmount,
           notes ? notes.trim() : null
         ]
       );
       invoiceId = insertRes.insertId;
     }
 
-    const itemValues = services.map((s) => [invoiceId, s.id, s.service_name, Number(s.price)]);
+    const itemValues = services.map((s) => [
+      invoiceId,
+      s.id,
+      `${s.service_name} (${s.room_code})`,
+      Number(s.price)
+    ]);
     await connection.query(
       'INSERT INTO Invoice_Items (invoice_id, service_id, service_name, unit_price) VALUES ?',
       [itemValues]
@@ -375,7 +550,7 @@ exports.createOrUpdateAppointmentInvoice = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Tạo hóa đơn thanh toán thành công',
+      message: 'Cập nhật hóa đơn thanh toán thành công',
       data: fullInvoice
     });
   } catch (error) {
@@ -449,10 +624,9 @@ exports.lookupCustomerByPhone = async (req, res) => {
 };
 
 /**
- * Tạo hóa đơn cho khách khám vãng lai (không đặt lịch trước)
- * Hỗ trợ liên kết tài khoản (user_id, pet_id) nếu tra cứu qua SĐT
+ * Tạo hóa đơn cho khách khám vãng lai tại Quầy Thu ngân (hỗ trợ chọn dịch vụ từ nhiều phòng khám cùng lúc)
  * POST /api/invoices/walk-in
- * Body: { customer_name, customer_phone?, user_id?, pet_id?, pet_name?, pet_species, service_ids: [1, 2], notes, room_id? }
+ * Body: { customer_name, customer_phone?, user_id?, pet_id?, pet_name?, pet_species, service_ids: [1, 2], notes }
  */
 exports.createWalkInInvoice = async (req, res) => {
   let connection;
@@ -466,8 +640,7 @@ exports.createWalkInInvoice = async (req, res) => {
       pet_name,
       pet_species,
       service_ids,
-      notes,
-      room_id
+      notes
     } = req.body;
 
     if (!customer_name || !String(customer_name).trim()) {
@@ -520,41 +693,24 @@ exports.createWalkInInvoice = async (req, res) => {
       });
     }
 
-    let targetRoomId = room_id ? Number(room_id) : null;
-    if (req.user.role === 'doctor') {
-      const ownRoomId = await getOwnRoomId(req.user.id);
-      if (!ownRoomId) {
-        return res.status(400).json({
-          success: false,
-          message: 'Bạn chưa được phân công phụ trách phòng khám nào'
-        });
-      }
-      targetRoomId = ownRoomId;
-    }
-
-    if (!targetRoomId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Không xác định được phòng khám để tạo hóa đơn'
-      });
-    }
-
     const placeholders = uniqueServiceIds.map(() => '?').join(',');
     const [services] = await db.query(
-      `SELECT id, room_id, service_name, price
-       FROM Services
-       WHERE id IN (${placeholders}) AND room_id = ?
-       ORDER BY id ASC`,
-      [...uniqueServiceIds, targetRoomId]
+      `SELECT s.id, s.room_id, s.service_name, s.price, cr.room_code, cr.room_name
+       FROM Services s
+       JOIN Clinic_Rooms cr ON cr.id = s.room_id
+       WHERE s.id IN (${placeholders})
+       ORDER BY cr.room_code ASC, s.id ASC`,
+      uniqueServiceIds
     );
 
     if (services.length !== uniqueServiceIds.length) {
       return res.status(400).json({
         success: false,
-        message: 'Có dịch vụ không hợp lệ hoặc không thuộc phòng khám hiện tại'
+        message: 'Có dịch vụ không hợp lệ'
       });
     }
 
+    const primaryRoomId = services[0].room_id;
     const totalAmount = services.reduce((sum, s) => sum + Number(s.price || 0), 0);
 
     connection = await db.getConnection();
@@ -563,14 +719,14 @@ exports.createWalkInInvoice = async (req, res) => {
     const invoiceCode = generateInvoiceCode('VL');
     const [insertRes] = await connection.query(
       `INSERT INTO Invoices (
-         invoice_code, invoice_type, appointment_id, user_id, pet_id, room_id, doctor_id,
+         invoice_code, invoice_type, appointment_id, user_id, pet_id, room_id, doctor_id, cashier_id,
          customer_name, customer_phone, pet_name, pet_species, total_amount, payment_status, notes
-       ) VALUES (?, 'walk_in', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+       ) VALUES (?, 'walk_in', NULL, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       [
         invoiceCode,
         linkedUserId,
         linkedPetId,
-        targetRoomId,
+        primaryRoomId,
         req.user.id,
         finalCustomerName,
         finalCustomerPhone,
@@ -582,7 +738,12 @@ exports.createWalkInInvoice = async (req, res) => {
     );
 
     const invoiceId = insertRes.insertId;
-    const itemValues = services.map((s) => [invoiceId, s.id, s.service_name, Number(s.price)]);
+    const itemValues = services.map((s) => [
+      invoiceId,
+      s.id,
+      `${s.service_name} (${s.room_code})`,
+      Number(s.price)
+    ]);
     await connection.query(
       'INSERT INTO Invoice_Items (invoice_id, service_id, service_name, unit_price) VALUES ?',
       [itemValues]
@@ -611,7 +772,7 @@ exports.createWalkInInvoice = async (req, res) => {
 };
 
 /**
- * Xác nhận hoàn tất thanh toán cho hóa đơn
+ * Xác nhận hoàn tất thanh toán cho hóa đơn (Thu ngân / Admin)
  * PATCH /api/invoices/:id/pay
  */
 exports.confirmInvoicePayment = async (req, res) => {
@@ -620,7 +781,7 @@ exports.confirmInvoicePayment = async (req, res) => {
     const { id } = req.params;
 
     const [rows] = await db.query(
-      'SELECT id, room_id, payment_status FROM Invoices WHERE id = ?',
+      'SELECT id, payment_status FROM Invoices WHERE id = ?',
       [id]
     );
 
@@ -631,19 +792,9 @@ exports.confirmInvoicePayment = async (req, res) => {
       });
     }
 
-    if (req.user.role === 'doctor') {
-      const ownRoomId = await getOwnRoomId(req.user.id);
-      if (!ownRoomId || ownRoomId !== rows[0].room_id) {
-        return res.status(403).json({
-          success: false,
-          message: 'Bạn không có quyền xác nhận hóa đơn của phòng khám khác'
-        });
-      }
-    }
-
     await db.query(
-      "UPDATE Invoices SET payment_status = 'paid' WHERE id = ?",
-      [id]
+      "UPDATE Invoices SET payment_status = 'paid', paid_at = NOW(), cashier_id = COALESCE(cashier_id, ?) WHERE id = ?",
+      [req.user.id, id]
     );
 
     const fullInvoice = await fetchFullInvoice(id);
@@ -677,6 +828,14 @@ exports.getInvoiceByAppointment = async (req, res) => {
     );
 
     if (rows.length === 0) {
+      // Nếu ca khám đã hoàn thành mà chưa có hóa đơn chờ thì tự động tạo luôn cho Thu ngân
+      const synced = await syncAppointmentPendingInvoice(appointmentId, req.user.id);
+      if (synced) {
+        return res.status(200).json({
+          success: true,
+          data: synced
+        });
+      }
       return res.status(404).json({
         success: false,
         message: 'Lịch khám này chưa có hóa đơn'
@@ -699,44 +858,37 @@ exports.getInvoiceByAppointment = async (req, res) => {
 };
 
 /**
- * Lấy danh sách hóa đơn của phòng bác sĩ (hoặc toàn viện nếu admin)
+ * Lấy danh sách hóa đơn toàn viện (Thu ngân / Admin)
  * GET /api/invoices
  */
 exports.getInvoices = async (req, res) => {
   try {
     await ensureInvoiceTables();
-    const { invoice_type, date } = req.query;
-    let roomId = req.query.room_id ? Number(req.query.room_id) : null;
-
-    if (req.user.role === 'doctor') {
-      const ownRoomId = await getOwnRoomId(req.user.id);
-      if (!ownRoomId) {
-        return res.status(200).json({ success: true, data: [] });
-      }
-      roomId = ownRoomId;
-    }
+    const { invoice_type, payment_status, date } = req.query;
 
     let query = `
       SELECT
         inv.*,
         cr.room_code,
         cr.room_name,
-        u.full_name as doctor_name
+        u.full_name as doctor_name,
+        cu.full_name as cashier_name
       FROM Invoices inv
-      JOIN Clinic_Rooms cr ON cr.id = inv.room_id
+      LEFT JOIN Clinic_Rooms cr ON cr.id = inv.room_id
       LEFT JOIN Users u ON u.id = inv.doctor_id
+      LEFT JOIN Users cu ON cu.id = inv.cashier_id
       WHERE 1=1
     `;
     const params = [];
 
-    if (roomId) {
-      query += ' AND inv.room_id = ?';
-      params.push(roomId);
-    }
-
     if (invoice_type && ['appointment', 'walk_in'].includes(invoice_type)) {
       query += ' AND inv.invoice_type = ?';
       params.push(invoice_type);
+    }
+
+    if (payment_status && ['pending', 'paid'].includes(payment_status)) {
+      query += ' AND inv.payment_status = ?';
+      params.push(payment_status);
     }
 
     if (date) {
@@ -744,7 +896,7 @@ exports.getInvoices = async (req, res) => {
       params.push(date);
     }
 
-    query += ' ORDER BY inv.created_at DESC LIMIT 50';
+    query += ' ORDER BY inv.created_at DESC LIMIT 100';
 
     const [invoices] = await db.query(query, params);
 
@@ -752,10 +904,20 @@ exports.getInvoices = async (req, res) => {
       const invoiceIds = invoices.map((i) => i.id);
       const placeholders = invoiceIds.map(() => '?').join(',');
       const [items] = await db.query(
-        `SELECT id, invoice_id, service_id, service_name, unit_price
-         FROM Invoice_Items
-         WHERE invoice_id IN (${placeholders})
-         ORDER BY id ASC`,
+        `SELECT
+           ii.id,
+           ii.invoice_id,
+           ii.service_id,
+           ii.service_name,
+           ii.unit_price,
+           s.room_id as service_room_id,
+           scr.room_code as service_room_code,
+           scr.room_name as service_room_name
+         FROM Invoice_Items ii
+         LEFT JOIN Services s ON s.id = ii.service_id
+         LEFT JOIN Clinic_Rooms scr ON scr.id = s.room_id
+         WHERE ii.invoice_id IN (${placeholders})
+         ORDER BY ii.id ASC`,
         invoiceIds
       );
 

@@ -20,6 +20,7 @@ import { getProfileApi, updateProfileApi } from '../../api/authApi';
 const ROLE_DISPLAY = {
   admin: { label: 'Quản trị viên hệ thống', bg: '#FEF3C7', color: '#B45309' },
   doctor: { label: 'Bác sĩ chuyên khoa', bg: '#E0F2FE', color: '#0369A1' },
+  cashier: { label: 'Thu ngân viện phí', bg: '#DCFCE7', color: '#15803D' },
   pharmacist: { label: 'Dược sĩ quầy thuốc', bg: '#EDE9FE', color: '#6D28D9' },
   customer: { label: 'Khách hàng thành viên', bg: '#E6FFFA', color: '#0F766E' },
 };
@@ -30,6 +31,8 @@ const renderRoleIcon = (role) => {
       return <Ionicons name="shield-checkmark" size={36} color="#B45309" />;
     case 'doctor':
       return <FontAwesome5 name="user-md" size={34} color="#0369A1" />;
+    case 'cashier':
+      return <Ionicons name="cash" size={36} color="#15803D" />;
     case 'pharmacist':
       return <MaterialCommunityIcons name="pill" size={38} color="#6D28D9" />;
     case 'customer':

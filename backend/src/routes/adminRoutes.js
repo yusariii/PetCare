@@ -15,4 +15,8 @@ router.get('/pharmacists', adminController.listPharmacists);
 router.post('/pharmacists', adminController.createPharmacist);
 router.patch('/pharmacists/:id/active', adminController.setPharmacistActive);
 
+router.get('/cashiers', adminController.listCashiers);
+router.post('/cashiers', adminController.createCashier);
+router.patch('/cashiers/:id/active', adminController.setCashierActive);
+
 module.exports = router;
