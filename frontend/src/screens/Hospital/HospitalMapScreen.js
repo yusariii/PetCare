@@ -22,6 +22,13 @@ const STATUS_META = {
   full: { color: COLORS.danger, bg: '#FEE2E2', textColor: '#B91C1C', label: 'Kín lịch' },
 };
 
+const REFERRAL_ONLY_ROOM_CODES = ['P103', 'P202', 'P203'];
+const isRoomOnlineBookable = (room) => {
+  if (!room) return false;
+  if (typeof room.is_online_bookable === 'boolean') return room.is_online_bookable;
+  return !REFERRAL_ONLY_ROOM_CODES.includes(room.room_code);
+};
+
 // BR08: sinh hướng dẫn lối đi từ sảnh tiếp đón tới phòng dựa trên tầng & tọa độ
 const getWayfindingSteps = (room) => {
   const steps = [
@@ -90,6 +97,14 @@ export default function HospitalMapScreen({ navigation }) {
 
   const handleBookingRedirect = () => {
     if (selectedRoom) {
+      if (!isRoomOnlineBookable(selectedRoom)) {
+        const primaryRoom = rooms.find((r) => r.room_code === 'P102') || rooms.find(isRoomOnlineBookable);
+        navigation.navigate('Booking', {
+          selectedRoomId: primaryRoom ? primaryRoom.id : undefined,
+        });
+        setShowRoomDetail(false);
+        return;
+      }
       navigation.navigate('Booking', {
         selectedRoomId: selectedRoom.id,
         selectedRoomName: selectedRoom.room_name,
@@ -333,16 +348,39 @@ export default function HospitalMapScreen({ navigation }) {
                   </View>
                 )}
 
-                <TouchableOpacity
-                  style={styles.bookingButton}
-                  onPress={handleBookingRedirect}
-                  activeOpacity={0.8}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Ionicons name="calendar-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
-                    <Text style={styles.bookingButtonText}>Đặt Lịch Tại Phòng Này Ngay</Text>
+                {isRoomOnlineBookable(selectedRoom) ? (
+                  <TouchableOpacity
+                    style={styles.bookingButton}
+                    onPress={handleBookingRedirect}
+                    activeOpacity={0.8}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Ionicons name="calendar-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                      <Text style={styles.bookingButtonText}>Đặt Lịch Tại Phòng Này Ngay</Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : (
+                  <View>
+                    <View style={{ backgroundColor: '#FEF3C7', borderColor: '#FDE68A', borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#92400E', marginBottom: 4 }}>
+                        Phòng chuyên khoa sâu (Tiếp nhận theo chỉ định Bác sĩ)
+                      </Text>
+                      <Text style={{ fontSize: 12, color: '#B45309', lineHeight: 18 }}>
+                        Theo quy chuẩn phân luồng y khoa, phòng {selectedRoom.room_code} không nhận đặt lịch tự do trực tuyến. Quý khách vui lòng đặt lịch khám lâm sàng ban đầu tại Phòng Tiếp đón (P101) hoặc Phòng Khám Nội (P102) để Bác sĩ chỉ định chuyển tuyến khi cần.
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.bookingButton}
+                      onPress={handleBookingRedirect}
+                      activeOpacity={0.8}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Ionicons name="calendar-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                        <Text style={styles.bookingButtonText}>Đặt Lịch Khám Lâm Sàng Ban Đầu (P102)</Text>
+                      </View>
+                    </TouchableOpacity>
                   </View>
-                </TouchableOpacity>
+                )}
               </ScrollView>
             )}
           </View>

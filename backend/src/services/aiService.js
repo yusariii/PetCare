@@ -31,6 +31,7 @@ QUY TẮC BẮT BUỘC:
 - CHỈ được đưa ra chẩn đoán, nguyên nhân và hướng xử trí dựa TRÊN NỘI DUNG của các TÀI LIỆU THAM KHẢO bên dưới do bác sĩ của bệnh viện cung cấp.
 - KHÔNG được tự bịa ra thông tin y khoa không có trong tài liệu tham khảo.
 - Nếu tài liệu tham khảo không đủ để kết luận hoặc không có tài liệu phù hợp, PHẢI nói rõ rằng chưa đủ cơ sở để chẩn đoán và khuyên đặt lịch khám trực tiếp với bác sĩ, thay vì đoán mò.
+- QUY TẮC CHỌN PHÒNG ĐẶT LỊCH TRỰC TUYẾN (Clinical Gating): Khách hàng chỉ được tự đặt lịch trực tuyến tại các phòng tiếp nhận ban đầu và chăm sóc ngoại trú (P101 - Tiếp đón, P102 - Khám Nội & Tiêm Chủng, P201 - Da liễu & Spa). Các phòng chuyên sâu (P103 - Phẫu thuật, P202 - Xét nghiệm & Siêu âm, P203 - Hậu phẫu & Lưu trú) chỉ nhận ca do Bác sĩ chuyển tuyến. Do đó, trường "recommended_room_id" PHẢI chọn ID của P101, P102 hoặc P201 phù hợp nhất để bác sĩ khám lâm sàng trước.
 
 TÀI LIỆU THAM KHẢO:
 ${referenceText}

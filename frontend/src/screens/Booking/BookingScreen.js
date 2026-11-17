@@ -10,6 +10,7 @@ import {
   Modal,
   FlatList,
   TextInput,
+  Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
@@ -18,7 +19,7 @@ import ResponsiveContainer from '../../components/ResponsiveContainer';
 import { useResponsive } from '../../utils/responsive';
 import { getRoomsApi, getRoomServicesApi, getRoomAvailabilityApi } from '../../api/roomApi';
 import { getMyPetsApi } from '../../api/petApi';
-import { createAppointmentApi } from '../../api/appointmentApi';
+import { createAppointmentApi, getMyAppointmentsApi } from '../../api/appointmentApi';
 
 const getSpeciesLabel = (species) => {
   if (!species) return 'Khác';
@@ -36,6 +37,39 @@ const getSpeciesIcon = (species) => {
   return 'paw';
 };
 
+// Cơ chế Vetstoria 1: Sàng lọc từ khóa triệu chứng cấp cứu nguy kịch theo thời gian thực
+const EMERGENCY_TRIAGE_KEYWORDS = [
+  'chảy máu nhiều',
+  'mất máu',
+  'co giật',
+  'bất tỉnh',
+  'hôn mê',
+  'ngộ độc',
+  'uống thuốc độc',
+  'ăn bả',
+  'bả chó',
+  'khó thở nặng',
+  'thở gấp',
+  'tím tái',
+  'gãy xương',
+  'tai nạn',
+  'xe tông',
+  'sùi bọt mép',
+  'nôn ra máu',
+  'đi ngoài ra máu tươi',
+  'vỡ bụng',
+  'trúng độc',
+];
+
+// Cơ chế Vetstoria 2: Các phòng chuyên khoa sâu chỉ tiếp nhận qua Bác sĩ chỉ định (không mở tự đặt online)
+const REFERRAL_ONLY_ROOM_CODES = ['P103', 'P202', 'P203'];
+
+const isRoomOnlineBookable = (room) => {
+  if (!room) return false;
+  if (typeof room.is_online_bookable === 'boolean') return room.is_online_bookable;
+  return !REFERRAL_ONLY_ROOM_CODES.includes(room.room_code);
+};
+
 export default function BookingScreen({ route, navigation }) {
   const { isTabletOrDesktop } = useResponsive();
 
@@ -43,12 +77,13 @@ export default function BookingScreen({ route, navigation }) {
   const [rooms, setRooms] = useState([]);
   const [services, setServices] = useState([]);
   const [pets, setPets] = useState([]);
+  const [myAppointments, setMyAppointments] = useState([]);
   const [availability, setAvailability] = useState([]);
 
   // Selected values
   const [selectedRoom, setSelectedRoom] = useState(route?.params?.selectedRoomId || null);
   const [selectedServices, setSelectedServices] = useState([]);
-  const [selectedPet, setSelectedPet] = useState(null);
+  const [selectedPets, setSelectedPets] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedTime, setSelectedTime] = useState(null);
   const [notes, setNotes] = useState('');
@@ -62,6 +97,8 @@ export default function BookingScreen({ route, navigation }) {
   const [showRoomPicker, setShowRoomPicker] = useState(false);
   const [showPetPicker, setShowPetPicker] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showDepositQrModal, setShowDepositQrModal] = useState(false);
+  const [previewAllocations, setPreviewAllocations] = useState([]);
 
   useEffect(() => {
     loadInitialData();
@@ -79,18 +116,23 @@ export default function BookingScreen({ route, navigation }) {
     }
   }, [selectedRoom, selectedDate]);
 
-  const refreshPets = async () => {
+  const refreshPetsAndBookings = async () => {
     try {
-      const petsRes = await getMyPetsApi();
-      if (petsRes.data.success) {
+      const [petsRes, appsRes] = await Promise.all([
+        getMyPetsApi(),
+        getMyAppointmentsApi().catch(() => ({ data: { success: false } })),
+      ]);
+      if (petsRes.data?.success) {
         const petList = petsRes.data.data || [];
         setPets(petList);
-        setSelectedPet((prev) => {
-          if (prev && petList.some((p) => p.id === prev)) {
-            return prev;
-          }
-          return petList.length > 0 ? petList[0].id : null;
+        setSelectedPets((prev) => {
+          const validPrev = (prev || []).filter((id) => petList.some((p) => p.id === id));
+          if (validPrev.length > 0) return validPrev;
+          return petList.length > 0 ? [petList[0].id] : [];
         });
+      }
+      if (appsRes.data?.success) {
+        setMyAppointments(appsRes.data.data || []);
       }
     } catch (e) {
       console.error('REFRESH_PETS_ERROR:', e);
@@ -99,7 +141,7 @@ export default function BookingScreen({ route, navigation }) {
 
   useFocusEffect(
     useCallback(() => {
-      refreshPets();
+      refreshPetsAndBookings();
       if (selectedRoom && selectedDate) {
         loadAvailability(selectedRoom, selectedDate);
       }
@@ -111,32 +153,40 @@ export default function BookingScreen({ route, navigation }) {
       setLoading(true);
       setError('');
 
-      const [roomsRes, petsRes] = await Promise.all([
+      const [roomsRes, petsRes, appsRes] = await Promise.all([
         getRoomsApi(),
-        getMyPetsApi()
+        getMyPetsApi(),
+        getMyAppointmentsApi().catch(() => ({ data: { success: false } })),
       ]);
 
       if (roomsRes.data.success) {
-        setRooms(roomsRes.data.data || []);
+        const allRooms = roomsRes.data.data || [];
+        setRooms(allRooms);
+        const bookableRooms = allRooms.filter(isRoomOnlineBookable);
         if (route?.params?.selectedRoomId) {
-          const room = roomsRes.data.data?.find(r => r.id === route.params.selectedRoomId);
+          const room = bookableRooms.find(r => r.id === route.params.selectedRoomId);
           if (room) {
             setSelectedRoom(room.id);
+          } else if (bookableRooms.length > 0) {
+            setSelectedRoom(bookableRooms[0].id);
           }
-        } else if (roomsRes.data.data?.length > 0) {
-          setSelectedRoom(roomsRes.data.data[0].id);
+        } else if (bookableRooms.length > 0) {
+          setSelectedRoom(bookableRooms[0].id);
         }
       }
 
       if (petsRes.data.success) {
         const petList = petsRes.data.data || [];
         setPets(petList);
-        setSelectedPet((prev) => {
-          if (prev && petList.some((p) => p.id === prev)) {
-            return prev;
-          }
-          return petList.length > 0 ? petList[0].id : null;
+        setSelectedPets((prev) => {
+          const validPrev = (prev || []).filter((id) => petList.some((p) => p.id === id));
+          if (validPrev.length > 0) return validPrev;
+          return petList.length > 0 ? [petList[0].id] : [];
         });
+      }
+
+      if (appsRes.data?.success) {
+        setMyAppointments(appsRes.data.data || []);
       }
     } catch (err) {
       console.error('LOAD_INITIAL_DATA_ERROR:', err);
@@ -144,6 +194,22 @@ export default function BookingScreen({ route, navigation }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleSelectPet = (petId) => {
+    setSelectedPets((prev) =>
+      prev.includes(petId) ? prev.filter((id) => id !== petId) : [...prev, petId]
+    );
+    setBookingError('');
+  };
+
+  const toggleSelectAllPets = () => {
+    if (selectedPets.length === pets.length) {
+      setSelectedPets(pets.length > 0 ? [pets[0].id] : []);
+    } else {
+      setSelectedPets(pets.map((p) => p.id));
+    }
+    setBookingError('');
   };
 
   const loadRoomServices = async (roomId) => {
@@ -186,9 +252,9 @@ export default function BookingScreen({ route, navigation }) {
     return days;
   };
 
-  const handleBooking = async () => {
-    if (!selectedPet || !selectedRoom || selectedServices.length === 0 || !selectedDate || !selectedTime) {
-      Alert.alert('Thông báo', 'Vui lòng chọn đầy đủ thông tin: thú cưng, phòng khám, dịch vụ, ngày và giờ khám.');
+  const submitBookingRequest = async (depositConfirmed = false) => {
+    if (selectedPets.length === 0 || !selectedRoom || selectedServices.length === 0 || !selectedDate || !selectedTime) {
+      Alert.alert('Thông báo', 'Vui lòng chọn đầy đủ thông tin: ít nhất 1 thú cưng, phòng khám, dịch vụ, ngày và giờ khám.');
       return;
     }
 
@@ -197,49 +263,82 @@ export default function BookingScreen({ route, navigation }) {
       setBookingError('');
       setBookingSuccess('');
 
-      // Gửi đúng giờ địa phương mà người dùng chọn (không quy đổi sang UTC),
-      // vì cột DATETIME của MySQL/MariaDB không lưu múi giờ.
       const appointmentDatetime = `${selectedDate} ${selectedTime}:00`;
 
       const response = await createAppointmentApi({
-        pet_id: selectedPet,
+        pet_id: selectedPets[0],
+        pet_ids: selectedPets,
         room_id: selectedRoom,
         service_ids: selectedServices,
         appointment_datetime: appointmentDatetime,
         notes: notes ? notes.trim() : null,
+        deposit_confirmed: depositConfirmed,
       });
 
       if (response.data.success) {
-        const bookedSummary = `${selectedTime} ngày ${selectedDate.split('-').reverse().join('/')}`;
+        setShowDepositQrModal(false);
+        const allocated = response.data.data?.allocated_appointments || [];
+        const totalDepositPaid = Number(response.data.data?.total_deposit_paid || 0);
+        const dateLabel = selectedDate.split('-').reverse().join('/');
+        const allocatedSummary =
+          allocated.length > 1
+            ? allocated.map((a) => `${a.pet_name} (${a.time_slot})`).join(', ')
+            : `${selectedTime} ngày ${dateLabel}`;
 
-        // Reset form (giữ lại phòng khám & thú cưng để đặt lịch tiếp cho tiện)
         setSelectedServices([]);
         setSelectedDate(null);
         setSelectedTime(null);
         setNotes('');
         setAvailability([]);
-        setBookingSuccess(`Đặt lịch thành công lúc ${bookedSummary}. Lịch hẹn đang chờ phòng khám xác nhận.`);
+        await refreshPetsAndBookings();
 
-        Alert.alert('Đặt lịch thành công', `Lịch hẹn lúc ${bookedSummary} đã được ghi nhận.\n\nBạn có muốn chuyển sang mục Lịch hẹn để theo dõi không?`, [
+        const successMsg =
+          allocated.length > 1
+            ? `Đặt lịch hàng loạt thành công cho ${allocated.length} bé ngày ${dateLabel}: ${allocatedSummary}${
+                totalDepositPaid > 0 ? ` (Đã đặt cọc 50%: ${totalDepositPaid.toLocaleString('vi-VN')}đ)` : ''
+              }.`
+            : `Đặt lịch thành công lúc ${selectedTime} ngày ${dateLabel}${
+                totalDepositPaid > 0 ? ` (Đã đặt cọc 50%: ${totalDepositPaid.toLocaleString('vi-VN')}đ)` : ''
+              }. Lịch hẹn đang chờ phòng khám xác nhận.`;
+
+        setBookingSuccess(successMsg);
+
+        Alert.alert('Đặt lịch thành công', `${successMsg}\n\nBạn có muốn chuyển sang mục Lịch hẹn để theo dõi không?`, [
           {
             text: 'Đặt lịch khác',
-            style: 'cancel'
+            style: 'cancel',
           },
           {
             text: 'Xem lịch hẹn',
-            onPress: () => navigation.navigate('Appointments', { refresh: Date.now() })
-          }
+            onPress: () => navigation.navigate('Appointments', { refresh: Date.now() }),
+          },
         ]);
       }
     } catch (err) {
+      setShowDepositQrModal(false);
+      if (err.response?.data?.requires_deposit) {
+        setPreviewAllocations(err.response.data.preview_allocations || []);
+        setShowDepositQrModal(true);
+        return;
+      }
       setBookingError(err.response?.data?.message || 'Không thể đặt lịch. Vui lòng thử lại.');
-      setSelectedTime(null);
       if (selectedRoom && selectedDate) {
         loadAvailability(selectedRoom, selectedDate);
       }
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handleBooking = () => {
+    if (selectedPets.length === 0 || !selectedRoom || selectedServices.length === 0 || !selectedDate || !selectedTime) {
+      Alert.alert('Thông báo', 'Vui lòng chọn đầy đủ thông tin: ít nhất 1 thú cưng, phòng khám, dịch vụ, ngày và giờ khám.');
+      return;
+    }
+    // Luôn gửi kiểm tra qua Backend trước (depositConfirmed = false) để xác thực TẤT CẢ các chốt chặn
+    // (No-Show >= 2 lần, điểm phạt hủy lịch, trùng phòng, giới hạn 2 phòng/ngày, đủ slot trống cho các bé).
+    // Chỉ khi vượt qua toàn bộ chốt chặn và Backend trả về requires_deposit: true thì mới mở Modal QR Đặt cọc 50%!
+    submitBookingRequest(false);
   };
 
   if (loading) {
@@ -253,9 +352,33 @@ export default function BookingScreen({ route, navigation }) {
 
   const selectedRoomObj = rooms.find(r => r.id === selectedRoom);
   const selectedServiceObjs = services.filter(service => selectedServices.includes(service.id));
-  const selectedPetObj = pets.find(p => p.id === selectedPet);
-  const totalPrice = selectedServiceObjs.reduce((total, service) => total + Number(service.price || 0), 0);
-  const isFormComplete = selectedPet && selectedRoom && selectedServices.length > 0 && selectedDate && selectedTime;
+  const selectedPetObjs = pets.filter(p => selectedPets.includes(p.id));
+  const selectedPetObj = selectedPetObjs[0] || null;
+  const petCount = selectedPets.length;
+  const singlePetPrice = selectedServiceObjs.reduce((total, service) => total + Number(service.price || 0), 0);
+  const totalPrice = singlePetPrice * Math.max(1, petCount);
+  const totalDurationMinutes = selectedServiceObjs.reduce((total, service) => total + Number(service.duration_minutes || 0), 0);
+  const maxSlotMinutes = selectedRoomObj ? Math.round(60 / Math.max(1, Number(selectedRoomObj.max_slot_per_hour || 1))) : 60;
+
+  // Đếm số lịch hẹn đã đặt trong ngày được chọn của chủ nuôi (status != 'cancelled')
+  const existingTodayCount = selectedDate
+    ? myAppointments.filter((a) => {
+        if (!a.appointment_datetime || a.status === 'cancelled') return false;
+        const dStr = String(a.appointment_datetime).slice(0, 10);
+        return dStr === selectedDate;
+      }).length
+    : 0;
+
+  // Quy tắc Đặt cọc 50%: Đặt hàng loạt >= 3 thú cưng HOẶC đặt cho thú cưng thứ 3 trở đi trong 1 ngày
+  const requiresDeposit = petCount >= 3 || (Boolean(selectedDate) && existingTodayCount + petCount >= 3 && petCount > 0);
+  const depositPerPet = requiresDeposit ? Math.round(singlePetPrice * 0.5) : 0;
+  const depositAmount = depositPerPet * petCount;
+
+  const matchedEmergencyKeywords = notes
+    ? EMERGENCY_TRIAGE_KEYWORDS.filter((kw) => notes.toLowerCase().includes(kw))
+    : [];
+  const isEmergencyDetected = matchedEmergencyKeywords.length > 0;
+  const isFormComplete = petCount > 0 && selectedRoom && selectedServices.length > 0 && selectedDate && selectedTime && !isEmergencyDetected;
 
   return (
     <ResponsiveContainer style={styles.container}>
@@ -280,11 +403,28 @@ export default function BookingScreen({ route, navigation }) {
           
           {/* CỘT TRÁI: THÔNG TIN THÚ CƯNG, PHÒNG KHÁM, DỊCH VỤ, GHI CHÚ */}
           <View style={[styles.leftColumn, isTabletOrDesktop && styles.leftColumnDesktop]}>
-            {/* 1. Chọn Thú cưng */}
+            {/* 1. Chọn Thú cưng (Hỗ trợ đặt lịch hàng loạt cho nhiều bé) */}
             <View style={styles.cardSection}>
-              <View style={styles.sectionTitleRow}>
-                <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>1</Text></View>
-                <Text style={styles.sectionLabel}>Bé cưng cần khám</Text>
+              <View style={[styles.sectionTitleRow, { justifyContent: 'space-between' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>1</Text></View>
+                  <Text style={styles.sectionLabel}>Bé cưng cần khám (Chọn 1 hoặc nhiều)</Text>
+                </View>
+                {pets.length > 1 && (
+                  <TouchableOpacity
+                    onPress={toggleSelectAllPets}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 8,
+                      backgroundColor: selectedPets.length === pets.length ? '#DCFCE7' : '#F1F5F9',
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.primaryDark }}>
+                      {selectedPets.length === pets.length ? 'Chỉ chọn 1 bé' : `Chọn tất cả (${pets.length})`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
               <TouchableOpacity
                 style={styles.pickerButton}
@@ -300,11 +440,20 @@ export default function BookingScreen({ route, navigation }) {
                   />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.pickerButtonText}>
-                      {selectedPetObj ? selectedPetObj.name : 'Chọn bé cưng của bạn'}
+                      {selectedPetObjs.length > 0
+                        ? selectedPetObjs.length === 1
+                          ? selectedPetObjs[0].name
+                          : `Đang chọn ${selectedPetObjs.length} bé: ${selectedPetObjs.map((p) => p.name).join(', ')}`
+                        : 'Chọn bé cưng của bạn'}
                     </Text>
-                    {selectedPetObj && (
+                    {selectedPetObjs.length === 1 && selectedPetObj && (
                       <Text style={styles.pickerSubText}>
                         Loài: {getSpeciesLabel(selectedPetObj.species)} • {selectedPetObj.breed || 'Chưa rõ giống'}
+                      </Text>
+                    )}
+                    {selectedPetObjs.length > 1 && (
+                      <Text style={styles.pickerSubText}>
+                        Đặt lịch hàng loạt • Hệ thống tự động phân bổ khung giờ liên tiếp nếu vượt quá số ca/giờ
                       </Text>
                     )}
                   </View>
@@ -332,7 +481,7 @@ export default function BookingScreen({ route, navigation }) {
                     </Text>
                     {selectedRoomObj && (
                       <Text style={styles.pickerSubText}>
-                        Tầng {selectedRoomObj.floor} • Tối đa {selectedRoomObj.max_slot_per_hour} ca/giờ
+                        Tầng {selectedRoomObj.floor} • Tối đa {selectedRoomObj.max_slot_per_hour} ca/giờ ({maxSlotMinutes} phút/ca)
                       </Text>
                     )}
                   </View>
@@ -399,7 +548,7 @@ export default function BookingScreen({ route, navigation }) {
                 <Text style={styles.sectionLabelWithoutStep}>Ghi chú hoặc mô tả triệu chứng (tùy chọn)</Text>
               </View>
               <TextInput
-                style={styles.notesTextInput}
+                style={[styles.notesTextInput, isEmergencyDetected && { borderColor: '#DC2626', backgroundColor: '#FEF2F2' }]}
                 value={notes}
                 onChangeText={setNotes}
                 placeholder="Ví dụ: Bé bị nôn 2 lần từ sáng, bỏ ăn hạt, cần kiểm tra thêm tai..."
@@ -407,6 +556,19 @@ export default function BookingScreen({ route, navigation }) {
                 multiline
                 numberOfLines={3}
               />
+              {isEmergencyDetected && (
+                <View style={styles.emergencyTriageBanner}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                    <Ionicons name="alert-circle" size={18} color="#DC2626" style={{ marginRight: 6 }} />
+                    <Text style={styles.emergencyTriageTitle}>
+                      PHÁT HIỆN DẤU HIỆU CẤP CỨU NGUY KỊCH ({matchedEmergencyKeywords.join(', ')})
+                    </Text>
+                  </View>
+                  <Text style={styles.emergencyTriageDesc}>
+                    Theo tiêu chuẩn phân loại cấp cứu thú y (Emergency Triage), trường hợp này cần được xử trí ngay lập tức và KHÔNG NÊN đặt lịch hẹn chờ trực tuyến. Vui lòng đưa bé đến thẳng Sảnh Cấp Cứu Tầng 1 (P101/P102) để Bác sĩ tiếp nhận ưu tiên!
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -524,9 +686,11 @@ export default function BookingScreen({ route, navigation }) {
               </View>
               
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Bé cưng:</Text>
-                <Text style={styles.summaryValue}>
-                  {selectedPetObj ? `${selectedPetObj.name} (${getSpeciesLabel(selectedPetObj.species)})` : '—'}
+                <Text style={styles.summaryLabel}>Bé cưng ({petCount}):</Text>
+                <Text style={styles.summaryValue} numberOfLines={2}>
+                  {selectedPetObjs.length > 0
+                    ? selectedPetObjs.map((p) => `${p.name} (${getSpeciesLabel(p.species)})`).join(', ')
+                    : '—'}
                 </Text>
               </View>
 
@@ -543,18 +707,96 @@ export default function BookingScreen({ route, navigation }) {
               </View>
 
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Thời gian:</Text>
+                <Text style={styles.summaryLabel}>Thời lượng dự kiến:</Text>
+                <Text style={styles.summaryValue}>
+                  {selectedServiceObjs.length > 0
+                    ? `${totalDurationMinutes} / ${maxSlotMinutes} phút (1 ca) × ${petCount} bé`
+                    : '—'}
+                </Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Khung giờ bắt đầu:</Text>
                 <Text style={[styles.summaryValue, selectedTime && { color: COLORS.primaryDark, fontWeight: 'bold' }]}>
                   {selectedDate && selectedTime ? `${selectedTime} • ${selectedDate}` : '—'}
                 </Text>
               </View>
 
+              {petCount > 1 && selectedRoomObj && (
+                <View
+                  style={{
+                    marginTop: 8,
+                    padding: 10,
+                    borderRadius: 10,
+                    backgroundColor: '#EFF6FF',
+                    borderWidth: 1,
+                    borderColor: '#BFDBFE',
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E40AF', marginBottom: 2 }}>
+                    ⚡ Tự động phân bổ ca khám cho {petCount} thú cưng
+                  </Text>
+                  <Text style={{ fontSize: 11.5, color: '#1E3A8A', lineHeight: 17 }}>
+                    Phòng {selectedRoomObj.room_code} tiếp nhận tối đa {selectedRoomObj.max_slot_per_hour} ca/giờ. Nếu số bé vượt quá số chỗ trống của khung giờ {selectedTime || 'đã chọn'}, hệ thống sẽ tự động xếp các bé tiếp theo sang khung giờ trống kế tiếp trong ngày!
+                  </Text>
+                </View>
+              )}
+
               <View style={styles.divider} />
 
               <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Tạm tính chi phí:</Text>
+                <Text style={styles.totalLabel}>Tổng chi phí ({petCount} bé):</Text>
                 <Text style={styles.totalValue}>{totalPrice.toLocaleString('vi-VN')} đ</Text>
               </View>
+
+              {requiresDeposit && totalPrice > 0 && (
+                <View
+                  style={{
+                    marginTop: 10,
+                    padding: 12,
+                    borderRadius: 12,
+                    backgroundColor: '#FFFBEB',
+                    borderWidth: 1,
+                    borderColor: '#FDE68A',
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <Ionicons name="qr-code-outline" size={16} color="#B45309" style={{ marginRight: 6 }} />
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: '#92400E' }}>
+                      Yêu cầu đặt cọc trước 50% giữ chỗ
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 12, color: '#B45309', lineHeight: 17, marginBottom: 8 }}>
+                    {petCount >= 3
+                      ? `Đặt lịch hàng loạt từ 3 thú cưng trở lên (${petCount} bé) cần đặt cọc 50% chi phí dịch vụ.`
+                      : `Bạn đã có ${existingTodayCount} lịch hẹn trong ngày ${selectedDate}. Đặt lịch từ thú cưng thứ 3 trở đi trong ngày cần đặt cọc 50%.`}
+                  </Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#92400E' }}>Tiền cọc 50% (Quét QR):</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#D97706' }}>
+                      {depositAmount.toLocaleString('vi-VN')} đ
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 12, color: '#78350F' }}>Còn lại thanh toán tại Quầy Thu Ngân:</Text>
+                    <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#78350F' }}>
+                      {Math.max(0, totalPrice - depositAmount).toLocaleString('vi-VN')} đ
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      marginTop: 8,
+                      paddingTop: 8,
+                      borderTopWidth: 1,
+                      borderTopColor: '#FDE68A',
+                    }}
+                  >
+                    <Text style={{ fontSize: 11.5, color: '#991B1B', lineHeight: 16, fontWeight: '600' }}>
+                      ⚠️ Quy định hoàn/hủy cọc: Khách tự bấm hủy lịch trên ứng dụng sẽ mất 100% tiền cọc (chỉ hoàn cọc khi Bác sĩ/Viện hủy lịch). Nếu có lý do chính đáng cần hủy hoàn cọc, vui lòng liên hệ trực tiếp Hotline Bệnh viện: 1900 6868 (hoặc 024 3999 8888).
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               {/* Button Đặt Lịch */}
               <TouchableOpacity
@@ -567,8 +809,19 @@ export default function BookingScreen({ route, navigation }) {
                   <ActivityIndicator color="#fff" />
                 ) : (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Ionicons name="checkmark-circle-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
-                    <Text style={styles.bookButtonText}>Xác Nhận Đặt Lịch</Text>
+                    <Ionicons
+                      name={requiresDeposit ? 'qr-code-outline' : 'checkmark-circle-outline'}
+                      size={18}
+                      color="#fff"
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text style={styles.bookButtonText}>
+                      {requiresDeposit
+                        ? `Đặt Cọc QR 50% (${depositAmount.toLocaleString('vi-VN')}đ) & Đặt Lịch`
+                        : petCount > 1
+                        ? `Xác Nhận Đặt Lịch Hàng Loạt (${petCount} bé)`
+                        : 'Xác Nhận Đặt Lịch'}
+                    </Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -579,47 +832,238 @@ export default function BookingScreen({ route, navigation }) {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Pet Picker Modal */}
+      {/* Pet Picker Modal (Multi-select) */}
       <Modal visible={showPetPicker} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chọn bé cưng</Text>
+              <View>
+                <Text style={styles.modalTitle}>Chọn thú cưng khám ({petCount}/{pets.length})</Text>
+                <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 2 }}>
+                  Tích chọn 1 hoặc nhiều bé để đặt lịch hàng loạt
+                </Text>
+              </View>
               <TouchableOpacity onPress={() => setShowPetPicker(false)} style={styles.modalCloseBtn}>
                 <Ionicons name="close" size={18} color={COLORS.textSecondary} />
               </TouchableOpacity>
             </View>
+
+            {pets.length > 1 && (
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, paddingTop: 10 }}>
+                <TouchableOpacity
+                  onPress={toggleSelectAllPets}
+                  style={{
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    backgroundColor: '#E0F2FE',
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#0369A1' }}>
+                    {selectedPets.length === pets.length ? 'Chỉ chọn 1 bé đầu' : `Chọn tất cả (${pets.length} bé)`}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <FlatList
               data={pets}
               keyExtractor={p => p.id.toString()}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.pickerItem, selectedPet === item.id && styles.pickerItemActive]}
-                  onPress={() => {
-                    setSelectedPet(item.id);
-                    setShowPetPicker(false);
+              renderItem={({ item }) => {
+                const isSelected = selectedPets.includes(item.id);
+                return (
+                  <TouchableOpacity
+                    style={[styles.pickerItem, isSelected && styles.pickerItemActive]}
+                    onPress={() => toggleSelectPet(item.id)}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                      <FontAwesome5
+                        name={getSpeciesIcon(item.species)}
+                        size={16}
+                        color={isSelected ? COLORS.primaryDark : COLORS.primary}
+                        style={{ marginRight: 10 }}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.pickerItemText, isSelected && styles.pickerItemTextActive]}>
+                          {item.name}
+                        </Text>
+                        <Text style={styles.pickerItemSub}>
+                          Loài: {getSpeciesLabel(item.species)} • {item.breed || 'Chưa rõ giống'}
+                        </Text>
+                      </View>
+                    </View>
+                    <Ionicons
+                      name={isSelected ? 'checkbox' : 'square-outline'}
+                      size={20}
+                      color={isSelected ? COLORS.primary : COLORS.textSecondary}
+                    />
+                  </TouchableOpacity>
+                );
+              }}
+            />
+
+            <View style={{ padding: 14, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+              <TouchableOpacity
+                style={[styles.bookButton, { marginTop: 0 }, petCount === 0 && styles.bookButtonDisabled]}
+                disabled={petCount === 0}
+                onPress={() => setShowPetPicker(false)}
+              >
+                <Text style={styles.bookButtonText}>Xong (Đã chọn {petCount} bé)</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Quét Mã QR Đặt Cọc 50% */}
+      <Modal
+        visible={showDepositQrModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDepositQrModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxWidth: 460, padding: 20 }]}>
+            <View style={[styles.modalHeader, { paddingHorizontal: 0, paddingTop: 0 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Đặt Cọc 50% Giữ Chỗ Khám</Text>
+                <Text style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 2 }}>
+                  Áp dụng khi đặt lịch hàng loạt ≥ 3 bé hoặc từ bé thứ 3 trở đi trong ngày
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowDepositQrModal(false)}
+                style={styles.modalCloseBtn}
+                disabled={submitting}
+              >
+                <Ionicons name="close" size={18} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View
+                style={{
+                  alignItems: 'center',
+                  backgroundColor: '#F0FDFA',
+                  borderWidth: 1,
+                  borderColor: '#99F6E4',
+                  borderRadius: 16,
+                  padding: 16,
+                  marginVertical: 12,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#0F766E', marginBottom: 10 }}>
+                  QUÉT MÃ QR ĐỂ ĐẶT CỌC 50% ({petCount} THÚ CƯNG)
+                </Text>
+                <View
+                  style={{
+                    backgroundColor: '#fff',
+                    padding: 10,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#E2E8F0',
                   }}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <FontAwesome5
-                      name={getSpeciesIcon(item.species)}
-                      size={16}
-                      color={selectedPet === item.id ? COLORS.primaryDark : COLORS.primary}
-                      style={{ marginRight: 10 }}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.pickerItemText, selectedPet === item.id && styles.pickerItemTextActive]}>
-                        {item.name}
-                      </Text>
-                      <Text style={styles.pickerItemSub}>
-                        Loài: {getSpeciesLabel(item.species)} • {item.breed || 'Chưa rõ giống'}
-                      </Text>
-                    </View>
+                  <Image
+                    source={{
+                      uri: `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(
+                        `PETCARE_DEPOSIT_50|NGAY:${selectedDate}|SO_PET:${petCount}|TIEN_COC:${depositAmount}VND`
+                      )}`,
+                    }}
+                    style={{ width: 200, height: 200 }}
+                    resizeMode="contain"
+                  />
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#0F172A', marginTop: 10 }}>
+                  BỆNH VIỆN THÚ Y ĐA KHOA PETCARE
+                </Text>
+                <Text style={{ fontSize: 22, fontWeight: '900', color: '#D97706', marginTop: 4 }}>
+                  {depositAmount.toLocaleString('vi-VN')} đ
+                </Text>
+                <Text style={{ fontSize: 12, color: '#475569', marginTop: 4, textAlign: 'center' }}>
+                  Nội dung CK: <Text style={{ fontWeight: '800' }}>COC50 {selectedDate} ({petCount} PET)</Text>
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: '#F8FAFC',
+                  borderRadius: 12,
+                  padding: 12,
+                  borderWidth: 1,
+                  borderColor: '#E2E8F0',
+                  marginBottom: 14,
+                }}
+              >
+                {previewAllocations.length > 0 && (
+                  <View style={{ marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#E2E8F0' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#1E40AF', marginBottom: 2 }}>
+                      ✓ Đã kiểm tra hợp lệ & giữ khung giờ dự kiến:
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#334155', lineHeight: 17 }}>
+                      {previewAllocations.map((a) => `${a.pet_name} (${a.time_slot})`).join(' • ')}
+                    </Text>
                   </View>
-                  {selectedPet === item.id && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />}
-                </TouchableOpacity>
-              )}
-            />
+                )}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 12.5, color: '#475569' }}>Tổng chi phí dự kiến ({petCount} bé):</Text>
+                  <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#0F172A' }}>
+                    {totalPrice.toLocaleString('vi-VN')} đ
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Text style={{ fontSize: 12.5, color: '#B45309', fontWeight: '700' }}>Đặt cọc ngay (50%):</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#D97706' }}>
+                    -{depositAmount.toLocaleString('vi-VN')} đ
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 12.5, color: '#047857', fontWeight: '700' }}>
+                    Còn phải thu tại Quầy Thu Ngân:
+                  </Text>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#047857' }}>
+                    {Math.max(0, totalPrice - depositAmount).toLocaleString('vi-VN')} đ
+                  </Text>
+                </View>
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: '#FEF2F2',
+                  borderRadius: 10,
+                  padding: 10,
+                  borderWidth: 1,
+                  borderColor: '#FECACA',
+                  marginBottom: 14,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                  <Ionicons name="call-outline" size={15} color="#B91C1C" style={{ marginRight: 6 }} />
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: '#991B1B' }}>
+                    Quy định Hoàn / Hủy Tiền Cọc 50%
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 11.5, color: '#7F1D1D', lineHeight: 17 }}>
+                  • Tự ý bấm hủy lịch trên ứng dụng hoặc vắng mặt (No-Show) sẽ bị <Text style={{ fontWeight: '800' }}>mất 100% tiền cọc</Text>.{'\n'}
+                  • Tiền cọc chỉ được hoàn lại khi Bác sĩ / Bệnh viện hủy lịch. Nếu bạn muốn hủy lịch và được hỗ trợ hoàn cọc, vui lòng liên hệ trực tiếp SĐT Viện: <Text style={{ fontWeight: '800' }}>1900 6868 - 024 3999 8888</Text>.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.bookButton, { marginTop: 0 }, submitting && styles.bookButtonDisabled]}
+                onPress={() => submitBookingRequest(true)}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Ionicons name="checkmark-done-circle-outline" size={19} color="#fff" style={{ marginRight: 6 }} />
+                    <Text style={styles.bookButtonText}>Tôi Đã Chuyển Khoản Cọc 50% • Hoàn Tất</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -637,23 +1081,43 @@ export default function BookingScreen({ route, navigation }) {
             <FlatList
               data={rooms}
               keyExtractor={r => r.id.toString()}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={[styles.pickerItem, selectedRoom === item.id && styles.pickerItemActive]}
-                  onPress={() => {
-                    setSelectedRoom(item.id);
-                    setShowRoomPicker(false);
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.pickerItemText, selectedRoom === item.id && styles.pickerItemTextActive]}>
-                      {item.room_code} - {item.room_name}
-                    </Text>
-                    <Text style={styles.pickerItemSub}>Tầng {item.floor} • Tối đa {item.max_slot_per_hour} ca/giờ</Text>
-                  </View>
-                  {selectedRoom === item.id && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />}
-                </TouchableOpacity>
-              )}
+              renderItem={({ item }) => {
+                const bookable = isRoomOnlineBookable(item);
+                return (
+                  <TouchableOpacity
+                    disabled={!bookable}
+                    style={[
+                      styles.pickerItem,
+                      selectedRoom === item.id && styles.pickerItemActive,
+                      !bookable && { opacity: 0.55, backgroundColor: '#F8FAFC' },
+                    ]}
+                    onPress={() => {
+                      if (!bookable) return;
+                      setSelectedRoom(item.id);
+                      setShowRoomPicker(false);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                        <Text style={[styles.pickerItemText, selectedRoom === item.id && styles.pickerItemTextActive]}>
+                          {item.room_code} - {item.room_name}
+                        </Text>
+                        {!bookable && (
+                          <View style={styles.referralOnlyBadge}>
+                            <Text style={styles.referralOnlyBadgeText}>Chỉ định Bác sĩ</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.pickerItemSub}>
+                        {bookable
+                          ? `Tầng ${item.floor} • Tối đa ${item.max_slot_per_hour} ca/giờ (${Math.round(60 / Math.max(1, Number(item.max_slot_per_hour || 1)))} phút/ca)`
+                          : `Tầng ${item.floor} • Phòng chuyên khoa sâu (Bác sĩ chỉ định sau khi khám tại P101/P102)`}
+                      </Text>
+                    </View>
+                    {selectedRoom === item.id && <Ionicons name="checkmark-circle" size={18} color={COLORS.primary} />}
+                  </TouchableOpacity>
+                );
+              }}
             />
           </View>
         </View>
@@ -1120,5 +1584,40 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  emergencyTriageBanner: {
+    marginTop: 10,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    borderLeftWidth: 4,
+    borderLeftColor: '#DC2626',
+    borderRadius: 12,
+    padding: 12,
+  },
+  emergencyTriageTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#991B1B',
+    flex: 1,
+  },
+  emergencyTriageDesc: {
+    fontSize: 12,
+    color: '#B91C1C',
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  referralOnlyBadge: {
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  referralOnlyBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#B45309',
   },
 });

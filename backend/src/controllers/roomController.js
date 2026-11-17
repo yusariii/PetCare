@@ -1,11 +1,52 @@
 const db = require('../config/db');
 
+// Các phòng chuyên khoa sâu chỉ tiếp nhận theo chỉ định Bác sĩ (Vetstoria Online Booking Exclusions)
+const REFERRAL_ONLY_ROOM_CODES = ['P103', 'P202', 'P203'];
+
+let serviceDurationsSynced = false;
+const ensureServiceDurationsSynced = async () => {
+  if (serviceDurationsSynced) return;
+  try {
+    const durationUpdates = [
+      { service_name: 'Tiếp đón & Tư vấn Ban đầu', duration_minutes: 15 },
+      { service_name: 'Khám Nội Tổng Quát', duration_minutes: 10 },
+      { service_name: 'Tiêm Chủng Cơ Bản (3 loại)', duration_minutes: 5 },
+      { service_name: 'Tiêm Chủng Mở Rộng (5 loại)', duration_minutes: 5 },
+      { service_name: 'Kỹ Thuật Truyền Dịch IV', duration_minutes: 10 },
+      { service_name: 'Phẫu Thuật Triệt Sản / Hoàn Toàn (Nữ)', duration_minutes: 20 },
+      { service_name: 'Phẫu Thuật Triệt Sản (Nam)', duration_minutes: 15 },
+      { service_name: 'Phẫu Thuật Cắt Tuyến Hạng Nhân', duration_minutes: 15 },
+      { service_name: 'Nhổ Răng / Cạo Vôi Răng', duration_minutes: 10 },
+      { service_name: 'Tắm Gội Spa Tiêu Chuẩn', duration_minutes: 10 },
+      { service_name: 'Cắt Lông Thẩm Mỹ', duration_minutes: 10 },
+      { service_name: 'Khám & Điều Trị Da Liễu', duration_minutes: 5 },
+      { service_name: 'Cắt Móng & Vệ Sinh Tai', duration_minutes: 5 },
+      { service_name: 'Siêu Âm Chẩn Đoán', duration_minutes: 10 },
+      { service_name: 'Chụp X-Ray Chẩn Đoán', duration_minutes: 10 },
+      { service_name: 'Xét Nghiệm Máu Toàn Diện', duration_minutes: 5 },
+      { service_name: 'Xét Nghiệm Nước Tiểu & Phân', duration_minutes: 5 },
+      { service_name: 'Theo Dõi Hậu Phẫu (1 đêm)', duration_minutes: 15 },
+      { service_name: 'Điều Trị Nằm Viện (1 ngày)', duration_minutes: 15 },
+    ];
+    for (const item of durationUpdates) {
+      await db.query(
+        'UPDATE Services SET duration_minutes = ? WHERE service_name = ?',
+        [item.duration_minutes, item.service_name]
+      );
+    }
+    serviceDurationsSynced = true;
+  } catch (err) {
+    // ignore if table not ready
+  }
+};
+
 /**
  * Get all clinic rooms with their services
  * GET /api/rooms
  */
 exports.getAllRooms = async (req, res) => {
   try {
+    await ensureServiceDurationsSynced();
     const [rooms] = await db.query(`
       SELECT
         cr.id, cr.room_code, cr.room_name, cr.floor,
@@ -40,6 +81,7 @@ exports.getAllRooms = async (req, res) => {
 
       rooms.forEach((room) => {
         room.services = servicesByRoom[room.id] || [];
+        room.is_online_bookable = !REFERRAL_ONLY_ROOM_CODES.includes(room.room_code);
       });
     }
 
@@ -183,6 +225,7 @@ exports.getLiveRoomsOccupancy = async (req, res) => {
 
       return {
         ...room,
+        is_online_bookable: !REFERRAL_ONLY_ROOM_CODES.includes(room.room_code),
         current_bookings: currentBookings,
         occupancy_ratio: Number(occupancyRatio.toFixed(2)),
         status_indicator: statusIndicator,
@@ -210,6 +253,7 @@ exports.getLiveRoomsOccupancy = async (req, res) => {
  */
 exports.getRoomServices = async (req, res) => {
   try {
+    await ensureServiceDurationsSynced();
     const { id } = req.params;
 
     const [services] = await db.query(`
