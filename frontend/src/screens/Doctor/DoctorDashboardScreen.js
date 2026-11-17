@@ -15,9 +15,15 @@ import {
 } from 'react-native';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
+import DateTimeFilterBar, { matchesDateTimeFilter } from '../../components/DateTimeFilterBar';
 import { useResponsive } from '../../utils/responsive';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
-import { getAllAppointmentsApi, updateAppointmentStatusApi } from '../../api/appointmentApi';
+import {
+  getAllAppointmentsApi,
+  updateAppointmentStatusApi,
+  updateAppointmentServicesApi,
+  createWalkInAppointmentApi,
+} from '../../api/appointmentApi';
 import { createHealthRecordApi, getPetHealthRecordsApi } from '../../api/healthRecordApi';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { listMedicinesApi } from '../../api/medicineApi';
@@ -26,15 +32,7 @@ import {
   getPetPrescriptionsApi,
   getPrescriptionDetailApi,
 } from '../../api/prescriptionApi';
-import {
-  getMyRoomServicesApi,
-  getInvoicesApi,
-  getInvoiceByAppointmentApi,
-  createOrUpdateAppointmentInvoiceApi,
-  createWalkInInvoiceApi,
-  confirmInvoicePaymentApi,
-  lookupCustomerByPhoneApi,
-} from '../../api/invoiceApi';
+import { getMyRoomServicesApi, lookupCustomerByPhoneApi } from '../../api/invoiceApi';
 
 const SPECIES_OPTIONS = [
   { value: 'dog', label: 'Chó', icon: 'dog' },
@@ -104,6 +102,7 @@ export default function DoctorDashboardScreen({ route }) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [appointments, setAppointments] = useState([]);
   const [selectedDate, setSelectedDate] = useState(today());
+  const [selectedTime, setSelectedTime] = useState('');
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [recordVisible, setRecordVisible] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -131,27 +130,30 @@ export default function DoctorDashboardScreen({ route }) {
   const [viewingPrescriptionDetail, setViewingPrescriptionDetail] = useState(null);
   const [viewPrescriptionLoading, setViewPrescriptionLoading] = useState(false);
 
-  // State cho Hóa đơn thanh toán & QR Code
+  // State cho Chỉ định Dịch vụ Khám (Đa phòng - Tự động đồng bộ sang Thu ngân) & Tiếp nhận vãng lai
   const [doctorRoom, setDoctorRoom] = useState(null);
+  const [allRooms, setAllRooms] = useState([]);
   const [roomServices, setRoomServices] = useState([]);
-  const [walkInInvoices, setWalkInInvoices] = useState([]);
+  const [serviceRoomFilter, setServiceRoomFilter] = useState('all'); // 'all' | room_id
   const [invoiceModalVisible, setInvoiceModalVisible] = useState(false);
-  const [invoiceMode, setInvoiceMode] = useState('appointment'); // 'appointment' | 'walk_in'
-  const [invoiceStep, setInvoiceStep] = useState('select_services'); // 'select_services' | 'qr_view'
+  const [invoiceModalMode, setInvoiceModalMode] = useState('appointment'); // 'appointment' | 'walk_in'
   const [invoiceTargetAppointment, setInvoiceTargetAppointment] = useState(null);
   const [bookedServiceIds, setBookedServiceIds] = useState([]);
   const [selectedServiceIds, setSelectedServiceIds] = useState([]);
-  const [walkInCustomerName, setWalkInCustomerName] = useState('');
-  const [walkInPhoneSearch, setWalkInPhoneSearch] = useState('');
-  const [walkInPhoneSearching, setWalkInPhoneSearching] = useState(false);
-  const [walkInMatchedUser, setWalkInMatchedUser] = useState(null);
-  const [walkInMatchedPets, setWalkInMatchedPets] = useState([]);
-  const [walkInSelectedPetId, setWalkInSelectedPetId] = useState(null);
-  const [walkInSpecies, setWalkInSpecies] = useState('dog');
-  const [invoiceNotes, setInvoiceNotes] = useState('');
-  const [createdInvoice, setCreatedInvoice] = useState(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceSaving, setInvoiceSaving] = useState(false);
+
+  // State cho Tiếp nhận ca khám vãng lai
+  const [walkInCustomerName, setWalkInCustomerName] = useState('');
+  const [walkInCustomerPhone, setWalkInCustomerPhone] = useState('');
+  const [walkInPetName, setWalkInPetName] = useState('');
+  const [walkInPetSpecies, setWalkInPetSpecies] = useState('dog');
+  const [walkInNotes, setWalkInNotes] = useState('');
+  const [walkInFoundUser, setWalkInFoundUser] = useState(null);
+  const [walkInFoundPets, setWalkInFoundPets] = useState([]);
+  const [walkInSelectedPetId, setWalkInSelectedPetId] = useState(null);
+  const [walkInSearchingPhone, setWalkInSearchingPhone] = useState(false);
+  const [walkInLookupMessage, setWalkInLookupMessage] = useState('');
 
   const loadDoctorRoomAndServices = async (roomId) => {
     try {
@@ -159,6 +161,7 @@ export default function DoctorDashboardScreen({ route }) {
       const res = await getMyRoomServicesApi(roomId);
       if (res.data.success && res.data.data) {
         setDoctorRoom(res.data.data.room || null);
+        setAllRooms(res.data.data.rooms || []);
         setRoomServices(res.data.data.services || []);
         return res.data.data;
       }
@@ -170,23 +173,12 @@ export default function DoctorDashboardScreen({ route }) {
     return null;
   };
 
-  const loadWalkInInvoices = async () => {
-    try {
-      const res = await getInvoicesApi({ invoice_type: 'walk_in' });
-      if (res.data.success) {
-        setWalkInInvoices(res.data.data || []);
-      }
-    } catch (e) {
-      setWalkInInvoices([]);
-    }
-  };
-
   const loadAppointments = async (date = selectedDate, status = statusFilter) => {
     try {
       setLoading(true);
       const params = completedOnly
-        ? { status: 'completed' }
-        : { date, ...(status !== 'all' ? { status } : {}) };
+        ? { status: 'completed', ...(date ? { date } : {}) }
+        : { ...(date ? { date } : {}), ...(status !== 'all' ? { status } : {}) };
       const response = await getAllAppointmentsApi(params);
       setAppointments(response.data.success ? response.data.data || [] : []);
     } catch (error) {
@@ -196,10 +188,15 @@ export default function DoctorDashboardScreen({ route }) {
     }
   };
 
+  const displayedAppointments = useMemo(() => {
+    return appointments.filter((a) =>
+      matchesDateTimeFilter(a.appointment_datetime, selectedDate, selectedTime)
+    );
+  }, [appointments, selectedDate, selectedTime]);
+
   useFocusEffect(useCallback(() => {
-    if (completedOnly || /^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) loadAppointments();
+    loadAppointments(selectedDate, statusFilter);
     loadDoctorRoomAndServices();
-    if (completedOnly) loadWalkInInvoices();
   }, [selectedDate, statusFilter, completedOnly]));
 
   useEffect(() => {
@@ -222,6 +219,11 @@ export default function DoctorDashboardScreen({ route }) {
       .reduce((sum, s) => sum + Number(s.price || 0), 0);
   }, [roomServices, selectedServiceIds]);
 
+  const displayedServicesForModal = useMemo(() => {
+    if (serviceRoomFilter === 'all') return roomServices;
+    return roomServices.filter((s) => Number(s.room_id) === Number(serviceRoomFilter));
+  }, [roomServices, serviceRoomFilter]);
+
   const toggleInvoiceService = (serviceId) => {
     const numId = Number(serviceId);
     setSelectedServiceIds((prev) =>
@@ -229,12 +231,13 @@ export default function DoctorDashboardScreen({ route }) {
     );
   };
 
-  const openAppointmentInvoiceModal = async (appointment, startAtQr = false) => {
+  const openAppointmentServiceModal = async (appointment) => {
     if (!appointment) return;
     if (appointment.invoice_id && appointment.invoice_payment_status !== 'pending') {
+      Alert.alert('Đã thanh toán', 'Ca khám này đã được Thu ngân thu tiền nên không thể thay đổi dịch vụ.');
       return;
     }
-    setInvoiceMode('appointment');
+    setInvoiceModalMode('appointment');
     setInvoiceTargetAppointment(appointment);
     const defaultIds = Array.isArray(appointment.service_ids) && appointment.service_ids.length > 0
       ? appointment.service_ids.map(Number)
@@ -243,204 +246,182 @@ export default function DoctorDashboardScreen({ route }) {
       : [];
     setBookedServiceIds(defaultIds);
     setSelectedServiceIds(defaultIds);
-    setInvoiceNotes('');
-    setCreatedInvoice(null);
-    setInvoiceStep(startAtQr && appointment.invoice_id ? 'qr_view' : 'select_services');
+    setServiceRoomFilter('all');
+    setInvoiceModalVisible(true);
+    await loadDoctorRoomAndServices(appointment.room_id);
+  };
+
+  const openWalkInAppointmentModal = async () => {
+    setInvoiceModalMode('walk_in');
+    setInvoiceTargetAppointment(null);
+    setWalkInCustomerName('');
+    setWalkInCustomerPhone('');
+    setWalkInPetName('');
+    setWalkInPetSpecies('dog');
+    setWalkInNotes('');
+    setWalkInFoundUser(null);
+    setWalkInFoundPets([]);
+    setWalkInSelectedPetId(null);
+    setWalkInLookupMessage('');
+    setBookedServiceIds([]);
+    setSelectedServiceIds([]);
     setInvoiceModalVisible(true);
 
-    try {
-      setInvoiceLoading(true);
-      await loadDoctorRoomAndServices(appointment.room_id);
-      if (appointment.invoice_id) {
-        const invRes = await getInvoiceByAppointmentApi(appointment.id);
-        if (invRes.data.success && invRes.data.data) {
-          const inv = invRes.data.data;
-          setCreatedInvoice(inv);
-          setInvoiceNotes(inv.notes || '');
-          if (Array.isArray(inv.items) && inv.items.length > 0) {
-            setSelectedServiceIds(inv.items.map((it) => Number(it.service_id)));
-          }
-          if (startAtQr) {
-            setInvoiceStep('qr_view');
-          }
-        }
+    const data = await loadDoctorRoomAndServices();
+    const myRoom = data?.room || doctorRoom;
+    const allSvcs = data?.services || roomServices;
+    if (myRoom?.id) {
+      setServiceRoomFilter(myRoom.id);
+      const firstOwnService = allSvcs.find((s) => Number(s.room_id) === Number(myRoom.id));
+      if (firstOwnService) {
+        setSelectedServiceIds([Number(firstOwnService.id)]);
       }
-    } catch (e) {
-      // Nếu chưa có hóa đơn thì giữ nguyên mặc định các dịch vụ khách đã chọn ở lịch hẹn
-    } finally {
-      setInvoiceLoading(false);
+    } else {
+      setServiceRoomFilter('all');
+      if (allSvcs.length > 0) {
+        setSelectedServiceIds([Number(allSvcs[0].id)]);
+      }
     }
   };
 
-  const openWalkInInvoiceModal = async () => {
-    setInvoiceMode('walk_in');
-    setInvoiceTargetAppointment(null);
-    setWalkInCustomerName('');
-    setWalkInPhoneSearch('');
-    setWalkInMatchedUser(null);
-    setWalkInMatchedPets([]);
-    setWalkInSelectedPetId(null);
-    setWalkInSpecies('dog');
-    setBookedServiceIds([]);
-    setSelectedServiceIds([]);
-    setInvoiceNotes('');
-    setCreatedInvoice(null);
-    setInvoiceStep('select_services');
-    setInvoiceModalVisible(true);
-    await loadDoctorRoomAndServices();
-  };
-
-  const handleLookupWalkInPhone = async () => {
-    const phone = walkInPhoneSearch.trim();
+  const handleLookupWalkInCustomerByPhone = async () => {
+    const phone = walkInCustomerPhone.trim();
     if (!phone) {
-      Alert.alert('Thiếu SĐT', 'Vui lòng nhập số điện thoại khách hàng để tra cứu.');
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập số điện thoại khách hàng để tra cứu.');
       return;
     }
     try {
-      setWalkInPhoneSearching(true);
+      setWalkInSearchingPhone(true);
+      setWalkInLookupMessage('');
       const res = await lookupCustomerByPhoneApi(phone);
-      if (res.data?.success && res.data.data?.user) {
-        const { user, pets = [] } = res.data.data;
-        setWalkInMatchedUser(user);
-        setWalkInMatchedPets(pets);
-        setWalkInCustomerName(user.full_name || '');
-        if (pets.length > 0) {
-          setWalkInSelectedPetId(pets[0].id);
-          setWalkInSpecies(
-            ['dog', 'cat', 'other'].includes(pets[0].species) ? pets[0].species : 'other'
+      if (res.data?.success && res.data?.data?.user) {
+        const { user: foundUser, pets: foundPets = [] } = res.data.data;
+        setWalkInFoundUser(foundUser);
+        setWalkInFoundPets(foundPets);
+        setWalkInCustomerName(foundUser.full_name || '');
+        if (foundPets.length > 0) {
+          const firstPet = foundPets[0];
+          setWalkInSelectedPetId(firstPet.id);
+          setWalkInPetName(firstPet.name || '');
+          setWalkInPetSpecies(
+            ['dog', 'cat', 'other'].includes(firstPet.species) ? firstPet.species : 'dog'
           );
         } else {
           setWalkInSelectedPetId(null);
         }
+        setWalkInLookupMessage(`Đã tìm thấy khách hàng: ${foundUser.full_name}`);
       }
     } catch (error) {
-      setWalkInMatchedUser(null);
-      setWalkInMatchedPets([]);
+      setWalkInFoundUser(null);
+      setWalkInFoundPets([]);
       setWalkInSelectedPetId(null);
-      Alert.alert(
-        'Không tìm thấy tài khoản',
-        error.response?.data?.message ||
-          'Chưa có tài khoản khách hàng đăng ký số điện thoại này. Bạn có thể nhập tên khách hàng bên dưới để tạo đơn vãng lai.'
+      setWalkInLookupMessage(
+        'Khách mới chưa có tài khoản — bạn có thể nhập trực tiếp tên chủ nuôi & thú cưng bên dưới.'
       );
     } finally {
-      setWalkInPhoneSearching(false);
+      setWalkInSearchingPhone(false);
     }
   };
 
-  const clearMatchedWalkInCustomer = () => {
-    setWalkInMatchedUser(null);
-    setWalkInMatchedPets([]);
-    setWalkInSelectedPetId(null);
+  const handleSelectWalkInPet = (pet) => {
+    if (!pet) {
+      setWalkInSelectedPetId(null);
+      setWalkInPetName('');
+      setWalkInPetSpecies('dog');
+      return;
+    }
+    setWalkInSelectedPetId(pet.id);
+    setWalkInPetName(pet.name || '');
+    setWalkInPetSpecies(['dog', 'cat', 'other'].includes(pet.species) ? pet.species : 'dog');
   };
 
-  const openExistingWalkInInvoice = (invoice) => {
-    setInvoiceMode('walk_in');
-    setInvoiceTargetAppointment(null);
-    setCreatedInvoice(invoice);
-    setInvoiceStep('qr_view');
-    setInvoiceModalVisible(true);
-  };
-
-  const submitInvoice = async () => {
-    if (invoiceMode === 'walk_in' && !walkInCustomerName.trim()) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên người dùng (khách hàng).');
+  const submitWalkInAppointment = async () => {
+    if (!walkInCustomerName.trim()) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập họ tên chủ nuôi.');
+      return;
+    }
+    if (!walkInPetName.trim()) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên thú cưng.');
       return;
     }
     if (selectedServiceIds.length === 0) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng chọn ít nhất 1 dịch vụ đã thực hiện để tính tiền.');
+      Alert.alert('Thiếu thông tin', 'Vui lòng chọn ít nhất 1 dịch vụ khám ban đầu.');
       return;
     }
     try {
       setInvoiceSaving(true);
-      if (invoiceMode === 'appointment' && invoiceTargetAppointment) {
-        const res = await createOrUpdateAppointmentInvoiceApi({
-          appointment_id: invoiceTargetAppointment.id,
-          service_ids: selectedServiceIds,
-          notes: invoiceNotes.trim() || undefined,
-        });
-        if (res.data.success) {
-          const inv = res.data.data;
-          setCreatedInvoice(inv);
-          setInvoiceStep('qr_view');
-          await loadAppointments();
-          if (selectedAppointment && selectedAppointment.id === invoiceTargetAppointment.id) {
-            const updatedServiceName = Array.isArray(inv.items)
-              ? inv.items.map((i) => i.service_name).join(', ')
-              : selectedAppointment.service_name;
-            setSelectedAppointment((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    invoice_id: inv.id,
-                    invoice_code: inv.invoice_code,
-                    invoice_total: inv.total_amount,
-                    invoice_payment_status: inv.payment_status || 'pending',
-                    service_ids: selectedServiceIds,
-                    service_name: updatedServiceName,
-                    price: inv.total_amount,
-                  }
-                : null
-            );
-          }
-        }
-      } else {
-        const selectedPetObj = walkInMatchedPets.find(
-          (p) => Number(p.id) === Number(walkInSelectedPetId)
+      const res = await createWalkInAppointmentApi({
+        customer_name: walkInCustomerName.trim(),
+        customer_phone: walkInCustomerPhone.trim() || undefined,
+        user_id: walkInFoundUser?.id || undefined,
+        pet_id: walkInSelectedPetId || undefined,
+        pet_name: walkInPetName.trim(),
+        pet_species: walkInPetSpecies,
+        service_ids: selectedServiceIds,
+        notes: walkInNotes.trim() || undefined,
+      });
+      if (res.data?.success) {
+        setInvoiceModalVisible(false);
+        const todayStr = today();
+        setSelectedDate(todayStr);
+        await loadAppointments(todayStr, statusFilter);
+        Alert.alert(
+          'Đã tiếp nhận khách vãng lai',
+          'Ca khám đã được tạo ở trạng thái "Đã xác nhận" (Đang khám). Bạn có thể chỉ định thêm dịch vụ đa phòng, lập bệnh án, kê đơn thuốc và hoàn thành ca khám để tự động chuyển sang Quầy Thu Ngân.'
         );
-        const res = await createWalkInInvoiceApi({
-          customer_name: walkInCustomerName.trim(),
-          customer_phone: walkInMatchedUser?.phone || walkInPhoneSearch.trim() || undefined,
-          user_id: walkInMatchedUser?.id || undefined,
-          pet_id: selectedPetObj?.id || undefined,
-          pet_name: selectedPetObj?.name || undefined,
-          pet_species: selectedPetObj?.species || walkInSpecies,
-          service_ids: selectedServiceIds,
-          notes: invoiceNotes.trim() || undefined,
-          room_id: doctorRoom?.id,
-        });
-        if (res.data.success) {
-          setCreatedInvoice(res.data.data);
-          setInvoiceStep('qr_view');
-          await loadWalkInInvoices();
-        }
       }
     } catch (error) {
-      Alert.alert('Lỗi', error.response?.data?.message || 'Không thể tạo hóa đơn thanh toán');
+      Alert.alert('Lỗi', error.response?.data?.message || 'Không thể tiếp nhận ca khám vãng lai');
     } finally {
       setInvoiceSaving(false);
     }
   };
 
-  const completeInvoicePayment = async () => {
-    if (!createdInvoice?.id) {
-      setInvoiceModalVisible(false);
+  const submitAssignedServices = async () => {
+    if (!invoiceTargetAppointment) return;
+    if (selectedServiceIds.length === 0) {
+      Alert.alert('Thiếu thông tin', 'Vui lòng chọn ít nhất 1 dịch vụ khám thực tế cho thú cưng.');
       return;
     }
     try {
       setInvoiceSaving(true);
-      const res = await confirmInvoicePaymentApi(createdInvoice.id);
-      if (res.data.success) {
-        const paidInv = res.data.data;
-        setCreatedInvoice(paidInv);
+      const res = await updateAppointmentServicesApi(
+        invoiceTargetAppointment.id,
+        selectedServiceIds
+      );
+      if (res.data?.success) {
+        const updatedServices = roomServices.filter((s) =>
+          selectedServiceIds.includes(Number(s.id))
+        );
+        const updatedServiceName =
+          res.data.data?.service_name ||
+          updatedServices
+            .map((s) => `${s.service_name}${s.room_code ? ` (${s.room_code})` : ''}`)
+            .join(', ');
+        const updatedTotal = res.data.data?.price ?? res.data.data?.total_amount ?? invoiceCalculatedTotal;
+
         await loadAppointments();
-        if (completedOnly) await loadWalkInInvoices();
-        if (selectedAppointment && invoiceTargetAppointment && selectedAppointment.id === invoiceTargetAppointment.id) {
+        if (selectedAppointment && selectedAppointment.id === invoiceTargetAppointment.id) {
           setSelectedAppointment((prev) =>
             prev
               ? {
                   ...prev,
-                  invoice_id: paidInv.id,
-                  invoice_code: paidInv.invoice_code,
-                  invoice_total: paidInv.total_amount,
-                  invoice_payment_status: 'paid',
+                  service_ids: selectedServiceIds,
+                  service_name: updatedServiceName || prev.service_name,
+                  price: updatedTotal,
+                  invoice_total: prev.invoice_id ? updatedTotal : prev.invoice_total,
                 }
               : null
           );
         }
         setInvoiceModalVisible(false);
+        Alert.alert(
+          'Đã cập nhật dịch vụ khám',
+          'Danh sách dịch vụ thực tế đã được lưu và tự động đẩy sang hóa đơn chờ tại Quầy Thu Ngân.'
+        );
       }
     } catch (error) {
-      Alert.alert('Lỗi', error.response?.data?.message || 'Không thể xác nhận thanh toán hóa đơn');
+      Alert.alert('Lỗi', error.response?.data?.message || 'Không thể cập nhật dịch vụ khám');
     } finally {
       setInvoiceSaving(false);
     }
@@ -487,7 +468,6 @@ export default function DoctorDashboardScreen({ route }) {
   const onRefresh = async () => {
     setRefreshing(true);
     await loadAppointments();
-    if (completedOnly) await loadWalkInInvoices();
     setRefreshing(false);
   };
 
@@ -496,24 +476,46 @@ export default function DoctorDashboardScreen({ route }) {
     return result;
   }, {}), [appointments]);
 
-  const updateStatus = async (status) => {
+  const updateStatus = async (status, extraPayload = {}) => {
     try {
       setSaving(true);
-      await updateAppointmentStatusApi(selectedAppointment.id, { status });
+      const res = await updateAppointmentStatusApi(selectedAppointment.id, { status, ...extraPayload });
       setSelectedAppointment(null);
       await loadAppointments();
+      if ((status === 'completed' || extraPayload.is_no_show) && res.data?.message) {
+        Alert.alert('Thông báo', res.data.message);
+      }
     } catch (error) {
-      Alert.alert('Lỗi', error.response?.data?.message || 'Không thể cập nhật lịch khám');
+      Alert.alert('Chưa thể hoàn thành', error.response?.data?.message || 'Không thể cập nhật lịch khám');
     } finally {
       setSaving(false);
     }
   };
 
+  const handleMarkNoShow = () => {
+    if (!selectedAppointment) return;
+    Alert.alert(
+      'Xác nhận khách vắng mặt (No-Show)',
+      `Đánh dấu chủ nuôi của bé "${selectedAppointment.pet_name}" không đến khám theo lịch đã xác nhận?\n\n• Giải phóng ngay slot phòng khám\n• Ghi nhận 1 lượt bỏ lịch (2 điểm vi phạm) vào hệ thống chống spam`,
+      [
+        { text: 'Quay lại', style: 'cancel' },
+        {
+          text: 'Xác nhận vắng mặt',
+          style: 'destructive',
+          onPress: () => updateStatus('cancelled', { is_no_show: true }),
+        },
+      ]
+    );
+  };
+
   const openRecordForm = () => {
     if (!selectedAppointment) return;
+    const defaultTitle = selectedAppointment.is_referred_case
+      ? `Kết quả chuyên khoa (${doctorRoom?.room_code || 'Phòng phối hợp'}) - ${selectedAppointment.pet_name}`
+      : `Khám ${selectedAppointment.service_name || 'tổng quát'} - ${selectedAppointment.pet_name}`;
     setForm({
       record_type: 'medical',
-      title: `Khám ${selectedAppointment.service_name || 'tổng quát'} - ${selectedAppointment.pet_name}`,
+      title: defaultTitle,
       diagnosis: '',
       treatment_plan: '',
       performed_date: today(),
@@ -532,14 +534,22 @@ export default function DoctorDashboardScreen({ route }) {
       const response = await createHealthRecordApi({ ...form, pet_id: selectedAppointment.pet_id });
       const recordId = response.data?.data?.record_id;
       const petName = selectedAppointment.pet_name;
+      const isReferredCase = Boolean(selectedAppointment?.is_referred_case);
       setRecordVisible(false);
       
       if (selectedAppointment?.pet_id) {
         await loadPetMedicalInfo(selectedAppointment.pet_id);
       }
       
-      // Tự động mở ngay form kê đơn thuốc
-      openPrescriptionForm(recordId, petName);
+      if (isReferredCase) {
+        Alert.alert(
+          'Đã lưu kết quả chuyên khoa',
+          `Kết quả khám và đề xuất thuốc đã được lưu vào hồ sơ của bé. Bác sĩ phòng tiếp nhận chính (${selectedAppointment?.room_code || 'phòng gốc'}) sẽ tổng hợp kết quả này để kê đơn thuốc cuối cùng.`
+        );
+      } else {
+        // Phòng tiếp nhận chính: tự động mở ngay form kê đơn thuốc tổng hợp
+        openPrescriptionForm(recordId, petName);
+      }
     } catch (error) {
       Alert.alert('Lỗi', error.response?.data?.message || 'Không thể lập hồ sơ bệnh án');
     } finally {
@@ -557,23 +567,30 @@ export default function DoctorDashboardScreen({ route }) {
   };
 
   const prescribeForAppointment = async () => {
+    if (selectedAppointment?.is_referred_case) {
+      Alert.alert(
+        'Ca khám phối hợp liên phòng',
+        `Theo quy tắc phối hợp liên phòng, phòng chuyên khoa chỉ lập Hồ sơ kết quả khám và ghi đề xuất thuốc. Bác sĩ phòng tiếp nhận chính (${selectedAppointment?.room_code || 'phòng gốc'}) sẽ tổng hợp và kê 1 đơn thuốc duy nhất cho bé.`
+      );
+      return;
+    }
     try {
       setSaving(true);
       const user = JSON.parse((await AsyncStorage.getItem('user')) || '{}');
       const response = await getPetHealthRecordsApi(selectedAppointment.pet_id);
       const records = response.data.success ? response.data.data || [] : [];
       
-      // Tìm bệnh án do bác sĩ này lập mà chưa có đơn thuốc
-      const pendingRecord = records.find(
-        (r) => (Number(r.doctor_id) === Number(user.id) || !r.doctor_id) && !r.prescription_id
-      ) || records.find((r) => !r.prescription_id);
+      // Ưu tiên bệnh án do bác sĩ phòng gốc lập, hoặc hồ sơ chuyên khoa chuyển về chưa kê đơn
+      const pendingRecord =
+        records.find((r) => Number(r.doctor_id) === Number(user.id) && !r.prescription_id) ||
+        records.find((r) => !r.prescription_id);
 
       if (pendingRecord) {
         openPrescriptionForm(pendingRecord.id, selectedAppointment.pet_name);
         return;
       }
 
-      // Nếu pet chưa có bệnh án nào:
+      // Nếu bác sĩ phòng chính chưa lập bệnh án kết luận cho ca khám:
       if (records.length === 0) {
         Alert.alert(
           'Chưa có bệnh án',
@@ -586,11 +603,11 @@ export default function DoctorDashboardScreen({ route }) {
         openRecordForm();
       } else {
         Alert.alert(
-          'Đã có đơn thuốc',
-          'Các bệnh án trước đó của bé đều đã được kê đơn thuốc. Bạn có muốn lập bệnh án mới cho ca khám này để kê thêm đơn thuốc không?',
+          'Lập bệnh án tổng hợp để kê đơn',
+          'Vui lòng lập bệnh án kết luận tại phòng chính (tổng hợp kết quả từ các phòng chuyên khoa nếu có). Hệ thống sẽ tự động mở form kê đơn thuốc ngay sau khi lưu.',
           [
             { text: 'Để sau', style: 'cancel' },
-            { text: 'Lập bệnh án mới', onPress: openRecordForm },
+            { text: 'Lập bệnh án kết luận', onPress: openRecordForm },
           ]
         );
       }
@@ -699,74 +716,79 @@ export default function DoctorDashboardScreen({ route }) {
               </View>
               <Text style={styles.subtitle}>
                 {completedOnly
-                  ? 'Chọn ca khám để lập hồ sơ bệnh án, kê đơn thuốc và tạo hóa đơn thanh toán QR.'
-                  : 'Theo dõi tiếp nhận bệnh nhân, chẩn đoán và điều trị trong ngày.'}
+                  ? 'Chọn ca khám để lập hồ sơ bệnh án, kê đơn thuốc hoặc cập nhật dịch vụ khám chuyển sang Quầy Thu Ngân.'
+                  : 'Theo dõi tiếp nhận bệnh nhân, chỉ định dịch vụ đa phòng, chẩn đoán và điều trị trong ngày.'}
               </Text>
             </View>
-
-            <TouchableOpacity
-              style={styles.createWalkInInvoiceBtn}
-              onPress={openWalkInInvoiceModal}
-              activeOpacity={0.85}
-            >
-              <Ionicons name="qr-code-outline" size={18} color="#fff" />
-              <Text style={styles.createWalkInInvoiceBtnText}>+ Tạo hóa đơn</Text>
-            </TouchableOpacity>
+            {!completedOnly && (
+              <TouchableOpacity
+                style={styles.walkInHeaderBtn}
+                onPress={openWalkInAppointmentModal}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="person-add-outline" size={18} color="#fff" />
+                <Text style={styles.walkInHeaderBtnText}>+ Tiếp nhận khám vãng lai</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
         {completedOnly ? (
-          <View style={styles.statsRow}>
-            <Stat label="Tổng ca đã khám" value={appointments.length} color={COLORS.success} icon={<Ionicons name="checkmark-circle-outline" size={22} color={COLORS.success} />} />
-            <Stat
-              label="Đã tạo hóa đơn"
-              value={appointments.filter((a) => Boolean(a.invoice_id)).length + walkInInvoices.length}
-              color={COLORS.primary}
-              icon={<Ionicons name="receipt-outline" size={22} color={COLORS.primary} />}
-            />
-            <Stat
-              label="Đơn khám vãng lai"
-              value={walkInInvoices.length}
-              color="#0284C7"
-              icon={<Ionicons name="walk-outline" size={22} color="#0284C7" />}
-            />
-          </View>
+          <>
+            <View style={styles.statsRow}>
+              <Stat label="Tổng ca đã khám" value={displayedAppointments.length} color={COLORS.success} icon={<Ionicons name="checkmark-circle-outline" size={22} color={COLORS.success} />} />
+              <Stat
+                label="Chờ Thu ngân thu"
+                value={displayedAppointments.filter((a) => !a.invoice_id || a.invoice_payment_status === 'pending').length}
+                color={COLORS.warning}
+                icon={<Ionicons name="time-outline" size={22} color={COLORS.warning} />}
+              />
+              <Stat
+                label="Đã thanh toán"
+                value={displayedAppointments.filter((a) => a.invoice_id && a.invoice_payment_status !== 'pending').length}
+                color={COLORS.primary}
+                icon={<Ionicons name="checkmark-done-circle-outline" size={22} color={COLORS.primary} />}
+              />
+            </View>
+
+            <View style={styles.filterSection}>
+              <View style={styles.filterBar}>
+                <DateTimeFilterBar
+                  selectedDate={selectedDate}
+                  onDateChange={setSelectedDate}
+                  selectedTime={selectedTime}
+                  onTimeChange={setSelectedTime}
+                  showTimeFilter={true}
+                  allowAllDates={true}
+                  dateLabel="Ngày khám:"
+                  timeLabel="Giờ khám:"
+                />
+              </View>
+            </View>
+          </>
         ) : (
           <>
             <View style={styles.statsRow}>
-              <Stat label="Tổng ca khám" value={appointments.length} color={COLORS.primary} icon={<Ionicons name="calendar-outline" size={22} color={COLORS.primary} />} />
+              <Stat label="Tổng ca khám" value={displayedAppointments.length} color={COLORS.primary} icon={<Ionicons name="calendar-outline" size={22} color={COLORS.primary} />} />
               <Stat label="Chờ duyệt" value={counts.pending || 0} color={COLORS.warning} icon={<Ionicons name="hourglass-outline" size={22} color={COLORS.warning} />} />
               <Stat label="Đã hoàn thành" value={counts.completed || 0} color={COLORS.success} icon={<Ionicons name="sparkles-outline" size={22} color={COLORS.success} />} />
             </View>
 
             <View style={styles.filterSection}>
               <View style={styles.filterBar}>
-                <View style={styles.datePickerWrap}>
-                  <Text style={styles.dateLabel}>Ngày khám:</Text>
-                  <TextInput
-                    value={selectedDate}
-                    onChangeText={setSelectedDate}
-                    onSubmitEditing={() => loadAppointments(selectedDate)}
-                    placeholder="YYYY-MM-DD"
-                    style={styles.dateInput}
-                    maxLength={10}
-                  />
-                  <TouchableOpacity style={styles.filterButton} onPress={() => loadAppointments(selectedDate)}>
-                    <Text style={styles.filterButtonText}>Xem</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                  {STATUS_FILTERS.map(([value, label]) => (
-                    <TouchableOpacity
-                      key={value}
-                      style={[styles.chip, statusFilter === value && styles.chipSelected]}
-                      onPress={() => setStatusFilter(value)}
-                    >
-                      <Text style={statusFilter === value ? styles.chipTextSelected : styles.chipText}>{label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                <DateTimeFilterBar
+                  selectedDate={selectedDate}
+                  onDateChange={setSelectedDate}
+                  selectedTime={selectedTime}
+                  onTimeChange={setSelectedTime}
+                  showTimeFilter={true}
+                  allowAllDates={true}
+                  dateLabel="Ngày khám:"
+                  timeLabel="Giờ khám:"
+                  statusOptions={STATUS_FILTERS}
+                  statusFilter={statusFilter}
+                  onStatusChange={setStatusFilter}
+                />
               </View>
             </View>
           </>
@@ -774,16 +796,18 @@ export default function DoctorDashboardScreen({ route }) {
 
         {loading ? (
           <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
-        ) : appointments.length === 0 ? (
+        ) : displayedAppointments.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="clipboard-outline" size={40} color={COLORS.textTertiary || '#94A3B8'} style={{ marginBottom: 12 }} />
             <Text style={styles.empty}>
-              {completedOnly ? 'Chưa có ca khám đặt lịch nào hoàn thành.' : `Không có lịch khám phù hợp trong ngày ${selectedDate}.`}
+              {completedOnly
+                ? 'Không có ca khám hoàn thành nào khớp bộ lọc ngày/giờ.'
+                : 'Không có lịch khám phù hợp với bộ lọc ngày/giờ đã chọn.'}
             </Text>
           </View>
         ) : (
           <View style={[styles.appointmentGrid, isTabletOrDesktop && styles.appointmentGridDesktop]}>
-            {appointments.map((appointment) => {
+            {displayedAppointments.map((appointment) => {
               const dateObj = new Date(appointment.appointment_datetime);
               const timeStr = dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
               const dateStr = dateObj.toLocaleDateString('vi-VN');
@@ -804,7 +828,33 @@ export default function DoctorDashboardScreen({ route }) {
                         {completedOnly ? `${dateStr} · ` : ''}{timeStr}
                       </Text>
                     </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      {String(appointment.notes || '').includes('[Khách vãng lai]') && (
+                        <View
+                          style={[
+                            styles.invoiceCreatedBadge,
+                            { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' },
+                          ]}
+                        >
+                          <Ionicons name="walk-outline" size={12} color="#B45309" />
+                          <Text style={[styles.invoiceCreatedBadgeText, { color: '#B45309' }]}>
+                            Khách vãng lai
+                          </Text>
+                        </View>
+                      )}
+                      {appointment.is_referred_case && (
+                        <View
+                          style={[
+                            styles.invoiceCreatedBadge,
+                            { backgroundColor: '#EDE9FE', borderColor: '#DDD6FE' },
+                          ]}
+                        >
+                          <Ionicons name="swap-horizontal-outline" size={12} color="#6D28D9" />
+                          <Text style={[styles.invoiceCreatedBadgeText, { color: '#6D28D9' }]}>
+                            Chuyển từ {appointment.referred_by_room_code || appointment.room_code}
+                          </Text>
+                        </View>
+                      )}
                       {hasInvoice && (
                         <View
                           style={[
@@ -828,7 +878,11 @@ export default function DoctorDashboardScreen({ route }) {
                         </View>
                       )}
                       <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
-                        <Text style={[styles.statusBadgeText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
+                        <Text style={[styles.statusBadgeText, { color: statusCfg.color }]}>
+                          {String(appointment.notes || '').includes('[VẮNG MẶT')
+                            ? 'Vắng mặt (No-Show)'
+                            : statusCfg.label}
+                        </Text>
                       </View>
                     </View>
                   </View>
@@ -872,6 +926,37 @@ export default function DoctorDashboardScreen({ route }) {
                         Chủ nuôi: {appointment.customer_info}
                       </Text>
                     </View>
+                    {Array.isArray(appointment.room_steps) && appointment.room_steps.length > 1 && (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                        <Ionicons name="git-network-outline" size={13} color="#0284C7" />
+                        {appointment.room_steps.map((step, idx) => {
+                          const done = step.status === 'completed';
+                          return (
+                            <View
+                              key={step.room_id}
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                backgroundColor: done ? '#DCFCE7' : '#FEF3C7',
+                                paddingHorizontal: 7,
+                                paddingVertical: 2,
+                                borderRadius: 6,
+                                gap: 3,
+                              }}
+                            >
+                              <Ionicons
+                                name={done ? 'checkmark-circle' : 'time-outline'}
+                                size={11}
+                                color={done ? '#16A34A' : '#D97706'}
+                              />
+                              <Text style={{ fontSize: 10, fontWeight: '700', color: done ? '#16A34A' : '#B45309' }}>
+                                {idx === 0 ? `${step.room_code} (Gốc)` : step.room_code}
+                              </Text>
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
                   </View>
 
                   {appointment.status === 'completed' && (
@@ -888,30 +973,22 @@ export default function DoctorDashboardScreen({ route }) {
                   )}
 
                   <View style={styles.cardFooterRow}>
-                    {appointment.status === 'completed' && !isInvoicePaid ? (
+                    {(appointment.status === 'confirmed' || appointment.status === 'completed') && !isInvoicePaid ? (
                       <View style={styles.cardInvoiceActions}>
                         <TouchableOpacity
-                          style={[
-                            styles.cardInvoiceBtn,
-                            hasInvoice && styles.cardInvoiceBtnView,
-                          ]}
+                          style={[styles.cardInvoiceBtn, styles.cardInvoiceBtnView]}
                           onPress={(e) => {
                             e?.stopPropagation?.();
-                            openAppointmentInvoiceModal(appointment, hasInvoice);
+                            openAppointmentServiceModal(appointment);
                           }}
                         >
                           <Ionicons
-                            name="qr-code-outline"
+                            name="medkit-outline"
                             size={15}
-                            color={hasInvoice ? COLORS.primaryDark : '#fff'}
+                            color={COLORS.primaryDark}
                           />
-                          <Text
-                            style={[
-                              styles.cardInvoiceBtnText,
-                              hasInvoice && styles.cardInvoiceBtnTextView,
-                            ]}
-                          >
-                            {hasInvoice ? 'Thanh toán & QR' : 'Tạo hóa đơn thanh toán'}
+                          <Text style={[styles.cardInvoiceBtnText, styles.cardInvoiceBtnTextView]}>
+                            Chỉ định dịch vụ khám
                           </Text>
                         </TouchableOpacity>
                       </View>
@@ -921,104 +998,6 @@ export default function DoctorDashboardScreen({ route }) {
                 </TouchableOpacity>
               );
             })}
-          </View>
-        )}
-
-        {/* Danh sách hóa đơn khách vãng lai (khám không đặt lịch trước) */}
-        {completedOnly && walkInInvoices.length > 0 && (
-          <View style={styles.walkInSection}>
-            <View style={styles.walkInSectionHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Ionicons name="receipt" size={20} color="#0284C7" />
-                <Text style={styles.walkInSectionTitle}>
-                  Hóa đơn khách khám trực tiếp (Không đặt lịch trước)
-                </Text>
-              </View>
-              <Text style={styles.walkInSectionSub}>
-                Nhấn vào hóa đơn để xem thông tin chi tiết đơn hàng.
-              </Text>
-            </View>
-
-            <View style={[styles.appointmentGrid, isTabletOrDesktop && styles.appointmentGridDesktop]}>
-              {walkInInvoices.map((inv) => {
-                const isPaid = inv.payment_status !== 'pending';
-                return (
-                  <TouchableOpacity
-                    key={inv.id}
-                    style={[styles.appointmentCard, isTabletOrDesktop && styles.appointmentCardDesktop]}
-                    onPress={() => openExistingWalkInInvoice(inv)}
-                    activeOpacity={0.85}
-                  >
-                    <View style={styles.appointmentHeader}>
-                      <View style={styles.timeBadge}>
-                        <Text style={styles.timeText}>{inv.invoice_code}</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <View
-                          style={[
-                            styles.invoiceCreatedBadge,
-                            isPaid && { backgroundColor: '#DCFCE7', borderColor: '#BBF7D0' },
-                          ]}
-                        >
-                          <Ionicons
-                            name={isPaid ? 'checkmark-circle' : 'qr-code-outline'}
-                            size={12}
-                            color={isPaid ? '#16A34A' : '#0369A1'}
-                          />
-                          <Text
-                            style={[
-                              styles.invoiceCreatedBadgeText,
-                              isPaid && { color: '#16A34A' },
-                            ]}
-                          >
-                            {isPaid ? 'Đã thanh toán' : 'Chờ thanh toán'}
-                          </Text>
-                        </View>
-                        <View style={[styles.statusBadge, { backgroundColor: '#E0F2FE' }]}>
-                          <Text style={[styles.statusBadgeText, { color: '#0369A1' }]}>Khách vãng lai</Text>
-                        </View>
-                      </View>
-                    </View>
-
-                    <View style={styles.petInfoRow}>
-                      <View style={[styles.petAvatar, { backgroundColor: '#E0F2FE' }]}>
-                        <FontAwesome5
-                          name={getSpeciesIconName(inv.pet_species)}
-                          size={18}
-                          color="#0369A1"
-                        />
-                      </View>
-                      <View style={styles.petTextWrap}>
-                        <Text style={styles.petName}>{inv.customer_name}</Text>
-                        <Text style={styles.petSpecies}>
-                          Loài khám: {formatSpeciesLabel(inv.pet_species)} · {new Date(inv.created_at).toLocaleString('vi-VN')}
-                        </Text>
-                      </View>
-                      <View style={styles.cardAmountPill}>
-                        <Text style={styles.cardAmountLabel}>Tổng tiền</Text>
-                        <Text style={styles.cardAmountValue}>
-                          {Number(inv.total_amount || 0).toLocaleString('vi-VN')} đ
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.detailsBox}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <FontAwesome5 name="hospital" size={12} color={COLORS.primary} />
-                        <Text style={styles.detailText} numberOfLines={2}>
-                          Dịch vụ: {(inv.items || []).map((i) => i.service_name).join(', ') || 'Khám dịch vụ'}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.cardFooterRow}>
-                      <View />
-                      <Text style={styles.cardActionHint}>Xem chi tiết đơn →</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
           </View>
         )}
       </ScrollView>
@@ -1054,15 +1033,61 @@ export default function DoctorDashboardScreen({ route }) {
                     />
                     {selectedAppointment.invoice_id && (
                       <InfoRow
-                        label="Trạng thái thanh toán"
+                        label="Trạng thái viện phí"
                         value={
                           selectedAppointment.invoice_payment_status !== 'pending'
-                            ? `Đã thanh toán (${selectedAppointment.invoice_code})`
-                            : `Chờ thanh toán (${selectedAppointment.invoice_code})`
+                            ? `Đã thanh toán tại Thu ngân (${selectedAppointment.invoice_code})`
+                            : `Đã chuyển sang Quầy Thu Ngân (${selectedAppointment.invoice_code})`
                         }
                       />
                     )}
                     <InfoRow label="Ghi chú khách hàng" value={selectedAppointment.notes || 'Không có ghi chú'} />
+                    {Array.isArray(selectedAppointment.room_steps) && selectedAppointment.room_steps.length > 1 && (
+                      <View
+                        style={{
+                          marginTop: 10,
+                          padding: 12,
+                          borderRadius: 12,
+                          backgroundColor: '#F0F9FF',
+                          borderWidth: 1,
+                          borderColor: '#BAE6FD',
+                          gap: 6,
+                        }}
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: '#0369A1' }}>
+                          Tiến trình phối hợp liên phòng:
+                        </Text>
+                        {selectedAppointment.room_steps.map((step, idx) => {
+                          const done = step.status === 'completed';
+                          return (
+                            <View
+                              key={step.room_id}
+                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+                            >
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.text }}>
+                                {idx + 1}. {step.room_code} - {step.room_name}
+                                {step.referred_by_room_code ? ` (từ ${step.referred_by_room_code})` : ' (Phòng tiếp nhận gốc)'}
+                              </Text>
+                              <Text
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: '800',
+                                  color: done ? '#16A34A' : '#D97706',
+                                }}
+                              >
+                                {done ? '✓ Đã xong' : '⏳ Đang khám'}
+                              </Text>
+                            </View>
+                          );
+                        })}
+                        {Array.isArray(selectedAppointment.waiting_for_rooms) &&
+                          selectedAppointment.waiting_for_rooms.length > 0 && (
+                            <Text style={{ fontSize: 11, color: '#B45309', fontWeight: '700', marginTop: 4 }}>
+                              ⚠️ Phòng bạn đang chờ kết quả từ: {selectedAppointment.waiting_for_rooms.join(', ')}
+                            </Text>
+                          )}
+                      </View>
+                    )}
                     {selectedAppointment.review_rating ? (
                       <View style={styles.infoRow}>
                         <Text style={styles.infoRowLabel}>Đánh giá</Text>
@@ -1078,7 +1103,7 @@ export default function DoctorDashboardScreen({ route }) {
                     ) : null}
                   </View>
 
-                  {selectedAppointment.status === 'completed' && (
+                  {(selectedAppointment.status === 'confirmed' || selectedAppointment.status === 'completed') && (
                     <View style={styles.medicalHistorySection}>
                       <View style={styles.sectionHeaderRow}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -1087,6 +1112,55 @@ export default function DoctorDashboardScreen({ route }) {
                         </View>
                         {loadingPetMedicalInfo && <ActivityIndicator size="small" color={COLORS.primary} />}
                       </View>
+
+                      {/* Danh sách Hồ sơ bệnh án / Kết quả khám chuyên khoa từ các phòng */}
+                      {petRecords.length > 0 && (
+                        <View style={[styles.prescriptionCardsBox, { marginBottom: 10 }]}>
+                          <Text style={styles.subSectionTitle}>
+                            Hồ sơ bệnh án & Kết quả chuyên khoa ({petRecords.length}):
+                          </Text>
+                          {petRecords.map((rec) => (
+                            <View
+                              key={`rec-${rec.id}`}
+                              style={[
+                                styles.prescriptionCardItem,
+                                { flexDirection: 'column', alignItems: 'stretch', gap: 6 },
+                              ]}
+                            >
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
+                                  <Ionicons name="document-text" size={16} color="#0284C7" />
+                                  <Text style={[styles.prescriptionCode, { flex: 1 }]} numberOfLines={2}>
+                                    {rec.title}
+                                  </Text>
+                                </View>
+                                {rec.doctor_room_code ? (
+                                  <View style={{ backgroundColor: '#E0F2FE', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                                    <Text style={{ color: '#0369A1', fontSize: 11, fontWeight: '800' }}>
+                                      {rec.doctor_room_code}
+                                    </Text>
+                                  </View>
+                                ) : null}
+                              </View>
+                              <Text style={styles.prescriptionDate}>
+                                {rec.performed_date ? new Date(rec.performed_date).toLocaleDateString('vi-VN') : ''} · BS. {rec.doctor_name || rec.doctor_info || 'Phụ trách'}
+                              </Text>
+                              {rec.diagnosis ? (
+                                <Text style={{ color: COLORS.text, fontSize: 12, lineHeight: 17 }}>
+                                  <Text style={{ fontWeight: '700', color: COLORS.textSecondary }}>Chẩn đoán: </Text>
+                                  {rec.diagnosis}
+                                </Text>
+                              ) : null}
+                              {rec.treatment_plan ? (
+                                <Text style={{ color: '#0F766E', fontSize: 12, lineHeight: 17, backgroundColor: '#F0FDFA', padding: 6, borderRadius: 6 }}>
+                                  <Text style={{ fontWeight: '800' }}>Hướng điều trị / Đề xuất thuốc: </Text>
+                                  {rec.treatment_plan}
+                                </Text>
+                              ) : null}
+                            </View>
+                          ))}
+                        </View>
+                      )}
 
                       {/* Đơn thuốc đã có của bé */}
                       {petPrescriptions.length > 0 ? (
@@ -1127,14 +1201,24 @@ export default function DoctorDashboardScreen({ route }) {
                         </View>
                       )}
 
-                      {/* Thông báo nếu có bệnh án chưa kê đơn */}
-                      {petRecords.length > 0 && petRecords.some((r) => !r.prescription_id) && (
+                      {/* Thông báo quy tắc kê đơn 1 lần tại phòng gốc */}
+                      {selectedAppointment.is_referred_case ? (
                         <View style={styles.pendingPrescriptionAlert}>
-                          <Ionicons name="information-circle" size={18} color="#D97706" />
-                          <Text style={styles.pendingPrescriptionAlertText}>
-                            Có bệnh án chưa kê đơn thuốc. Bạn có thể nhấn nút "Kê đơn thuốc điện tử" bên dưới để kê ngay.
+                          <Ionicons name="information-circle" size={18} color="#0284C7" />
+                          <Text style={[styles.pendingPrescriptionAlertText, { color: '#0369A1' }]}>
+                            Ca khám phối hợp liên phòng: Phòng chuyên khoa lập Hồ sơ kết quả khám và ghi đề xuất thuốc ở mục Hướng điều trị. Bác sĩ phòng tiếp nhận chính ({selectedAppointment.room_code || 'phòng gốc'}) sẽ tổng hợp và kê 1 đơn thuốc duy nhất cho bé.
                           </Text>
                         </View>
+                      ) : (
+                        petRecords.length > 0 &&
+                        petRecords.some((r) => !r.prescription_id) && (
+                          <View style={styles.pendingPrescriptionAlert}>
+                            <Ionicons name="information-circle" size={18} color="#D97706" />
+                            <Text style={styles.pendingPrescriptionAlertText}>
+                              Có hồ sơ/kết quả chuyên khoa chưa kê đơn thuốc. Bác sĩ phòng chính có thể xem đề xuất thuốc ở trên và nhấn "Kê đơn thuốc điện tử" bên dưới để kê đơn tổng hợp.
+                            </Text>
+                          </View>
+                        )
                       )}
                     </View>
                   )}
@@ -1143,29 +1227,57 @@ export default function DoctorDashboardScreen({ route }) {
                     {selectedAppointment.status === 'pending' && (
                       <Action label="Xác nhận lịch khám" icon={<Ionicons name="checkmark-circle-outline" size={18} color="#fff" />} color={COLORS.primary} onPress={() => updateStatus('confirmed')} />
                     )}
+                    {(selectedAppointment.status === 'confirmed' || selectedAppointment.status === 'completed') &&
+                      !(selectedAppointment.invoice_id && selectedAppointment.invoice_payment_status !== 'pending') && (
+                        <Action
+                          label="Chỉ định / Cập nhật dịch vụ khám (Đa phòng)"
+                          icon={<Ionicons name="medkit-outline" size={18} color="#fff" />}
+                          color="#0284C7"
+                          onPress={() => openAppointmentServiceModal(selectedAppointment)}
+                        />
+                      )}
                     {selectedAppointment.status === 'confirmed' && (
-                      <Action label="Hoàn thành khám bệnh" icon={<Ionicons name="checkbox-outline" size={18} color="#fff" />} color={COLORS.success} onPress={() => updateStatus('completed')} />
+                      <Action
+                        label={
+                          selectedAppointment.is_referred_case
+                            ? `Hoàn thành tại phòng này (Trả kết quả về ${
+                                selectedAppointment.referred_by_room_code || selectedAppointment.room_code
+                              })`
+                            : 'Hoàn thành khám bệnh'
+                        }
+                        icon={<Ionicons name="checkbox-outline" size={18} color="#fff" />}
+                        color={COLORS.success}
+                        onPress={() => updateStatus('completed')}
+                      />
                     )}
-                    {(selectedAppointment.status === 'pending' || selectedAppointment.status === 'confirmed') && (
+                    {selectedAppointment.status === 'confirmed' && !selectedAppointment.is_referred_case && (
+                      <Action
+                        label="Khách vắng mặt (Không đến khám)"
+                        icon={<Ionicons name="person-remove-outline" size={18} color="#fff" />}
+                        color="#B45309"
+                        onPress={handleMarkNoShow}
+                      />
+                    )}
+                    {(selectedAppointment.status === 'pending' ||
+                      (selectedAppointment.status === 'confirmed' && !selectedAppointment.is_referred_case)) && (
                       <Action label="Hủy lịch hẹn" icon={<Ionicons name="close-circle-outline" size={18} color="#fff" />} color={COLORS.danger} onPress={() => updateStatus('cancelled')} />
                     )}
-                    {selectedAppointment.status === 'completed' && (
+                    {(selectedAppointment.status === 'confirmed' || selectedAppointment.status === 'completed') && (
                       <>
-                        {!(selectedAppointment.invoice_id && selectedAppointment.invoice_payment_status !== 'pending') && (
+                        <Action
+                          label={selectedAppointment.is_referred_case ? 'Lập hồ sơ kết quả chuyên khoa' : 'Lập hồ sơ bệnh án'}
+                          icon={<Ionicons name="document-text-outline" size={18} color="#fff" />}
+                          color={COLORS.primaryDark}
+                          onPress={openRecordForm}
+                        />
+                        {!selectedAppointment.is_referred_case && (
                           <Action
-                            label="Tạo hóa đơn thanh toán (Mã QR)"
-                            icon={<Ionicons name="qr-code-outline" size={18} color="#fff" />}
-                            color="#0284C7"
-                            onPress={() =>
-                              openAppointmentInvoiceModal(
-                                selectedAppointment,
-                                Boolean(selectedAppointment.invoice_id)
-                              )
-                            }
+                            label="Kê đơn thuốc điện tử (Tổng hợp)"
+                            icon={<MaterialCommunityIcons name="pill" size={18} color="#fff" />}
+                            color={COLORS.primary}
+                            onPress={prescribeForAppointment}
                           />
                         )}
-                        <Action label="Lập hồ sơ bệnh án" icon={<Ionicons name="document-text-outline" size={18} color="#fff" />} color={COLORS.primaryDark} onPress={openRecordForm} />
-                        <Action label="Kê đơn thuốc điện tử" icon={<MaterialCommunityIcons name="pill" size={18} color="#fff" />} color={COLORS.primary} onPress={prescribeForAppointment} />
                       </>
                     )}
                   </View>
@@ -1183,8 +1295,14 @@ export default function DoctorDashboardScreen({ route }) {
           <View style={[styles.modal, isTabletOrDesktop && styles.modalCentered]}>
             <View style={styles.modalHeader}>
               <View>
-                <Text style={styles.modalTitle}>Lập hồ sơ bệnh án</Text>
-                <Text style={styles.modalSubtitle}>Ghi chép tình trạng và phác đồ điều trị</Text>
+                <Text style={styles.modalTitle}>
+                  {selectedAppointment?.is_referred_case ? 'Lập hồ sơ kết quả chuyên khoa' : 'Lập hồ sơ bệnh án'}
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  {selectedAppointment?.is_referred_case
+                    ? 'Ghi kết quả cận lâm sàng & đề xuất thuốc gửi về phòng chính'
+                    : 'Ghi chép tình trạng và phác đồ điều trị tổng hợp'}
+                </Text>
               </View>
               <TouchableOpacity style={styles.closeBtn} onPress={() => setRecordVisible(false)}>
                 <Ionicons name="close" size={18} color={COLORS.textSecondary} />
@@ -1204,12 +1322,32 @@ export default function DoctorDashboardScreen({ route }) {
                 ))}
               </View>
               <Field label="Tiêu đề hồ sơ" value={form.title} onChangeText={(title) => setForm({ ...form, title })} placeholder="Ví dụ: Khám tổng quát & xét nghiệm máu" />
-              <Field label="Chẩn đoán lâm sàng" value={form.diagnosis} onChangeText={(diagnosis) => setForm({ ...form, diagnosis })} multiline placeholder="Mô tả kết quả khám và chẩn đoán bệnh..." />
-              <Field label="Hướng điều trị & dặn dò" value={form.treatment_plan} onChangeText={(treatment_plan) => setForm({ ...form, treatment_plan })} multiline placeholder="Phác đồ điều trị, chăm sóc tại nhà..." />
+              <Field label="Chẩn đoán / Kết quả chuyên khoa" value={form.diagnosis} onChangeText={(diagnosis) => setForm({ ...form, diagnosis })} multiline placeholder="Mô tả kết quả khám, siêu âm, xét nghiệm và chẩn đoán..." />
+              <Field
+                label={
+                  selectedAppointment?.is_referred_case
+                    ? 'Hướng điều trị & Đề xuất thuốc (gửi về phòng chính)'
+                    : 'Hướng điều trị & dặn dò'
+                }
+                value={form.treatment_plan}
+                onChangeText={(treatment_plan) => setForm({ ...form, treatment_plan })}
+                multiline
+                placeholder={
+                  selectedAppointment?.is_referred_case
+                    ? 'Ghi đề xuất thuốc/liều lượng để Bác sĩ phòng chính tổng hợp kê đơn...'
+                    : 'Phác đồ điều trị, chăm sóc tại nhà...'
+                }
+              />
               <Field label="Ngày thực hiện (YYYY-MM-DD)" value={form.performed_date} onChangeText={(performed_date) => setForm({ ...form, performed_date })} />
               <Field label="Ngày tái khám (YYYY-MM-DD, không bắt buộc)" value={form.next_due_date} onChangeText={(next_due_date) => setForm({ ...form, next_due_date })} placeholder="Để trống nếu không hẹn khám lại" />
               <TouchableOpacity style={styles.saveButton} onPress={saveRecord} disabled={saving}>
-                <Text style={styles.saveText}>{saving ? 'Đang lưu hồ sơ...' : 'Lưu hồ sơ bệnh án'}</Text>
+                <Text style={styles.saveText}>
+                  {saving
+                    ? 'Đang lưu hồ sơ...'
+                    : selectedAppointment?.is_referred_case
+                    ? 'Lưu kết quả chuyên khoa'
+                    : 'Lưu hồ sơ & Kê đơn thuốc'}
+                </Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -1327,6 +1465,32 @@ export default function DoctorDashboardScreen({ route }) {
                 </View>
 
                 <ScrollView style={styles.modalScroll}>
+                  {petRecords.some((r) => r.treatment_plan) && (
+                    <View
+                      style={{
+                        backgroundColor: '#F0FDFA',
+                        borderWidth: 1,
+                        borderColor: '#99F6E4',
+                        borderRadius: 10,
+                        padding: 10,
+                        marginBottom: 12,
+                        gap: 4,
+                      }}
+                    >
+                      <Text style={{ color: '#0F766E', fontWeight: '800', fontSize: 12 }}>
+                        Đề xuất thuốc / Hướng điều trị từ các phòng khám:
+                      </Text>
+                      {petRecords
+                        .filter((r) => r.treatment_plan)
+                        .slice(0, 3)
+                        .map((r) => (
+                          <Text key={`rec-note-${r.id}`} style={{ color: '#134E4A', fontSize: 12, lineHeight: 17 }}>
+                            • <Text style={{ fontWeight: '700' }}>[{r.doctor_room_code || 'Phòng khám'} - BS. {r.doctor_name || 'Phụ trách'}]: </Text>
+                            {r.treatment_plan}
+                          </Text>
+                        ))}
+                    </View>
+                  )}
                   {prescriptionItems.length === 0 ? (
                     <View style={styles.emptyPrescription}>
                       <MaterialCommunityIcons name="pill" size={42} color={COLORS.primary} style={{ marginBottom: 10 }} />
@@ -1505,7 +1669,7 @@ export default function DoctorDashboardScreen({ route }) {
         </View>
       </Modal>
 
-      {/* Modal Tạo Hóa Đơn & Mã QR Thanh Toán */}
+      {/* Modal Chỉ định / Cập nhật Dịch vụ Khám (Đa phòng) & Tiếp nhận ca khám vãng lai */}
       <Modal
         visible={invoiceModalVisible}
         transparent
@@ -1517,21 +1681,21 @@ export default function DoctorDashboardScreen({ route }) {
             <View style={styles.modalHeader}>
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Ionicons name="qr-code-outline" size={20} color={COLORS.primary} />
+                  <Ionicons
+                    name={invoiceModalMode === 'walk_in' ? 'person-add-outline' : 'medkit-outline'}
+                    size={20}
+                    color={COLORS.primary}
+                  />
                   <Text style={styles.modalTitle}>
-                    {invoiceStep === 'qr_view'
-                      ? 'Hóa Đơn & Mã QR Thanh Toán'
-                      : invoiceMode === 'appointment'
-                      ? 'Xác nhận Dịch vụ & Tạo Hóa đơn'
-                      : 'Tạo Hóa đơn (Khách không đặt lịch)'}
+                    {invoiceModalMode === 'walk_in'
+                      ? 'Tiếp nhận ca khám vãng lai'
+                      : 'Chỉ định & Cập nhật Dịch vụ Khám'}
                   </Text>
                 </View>
                 <Text style={styles.modalSubtitle}>
-                  {invoiceStep === 'qr_view'
-                    ? `Mã hóa đơn: ${createdInvoice?.invoice_code || ''} · Quét mã QR để thanh toán`
-                    : invoiceMode === 'appointment'
-                    ? 'Mặc định tích chọn các dịch vụ khách đã đặt. Bác sĩ có thể điều chỉnh lại theo thực tế khám.'
-                    : 'Nhập tên khách hàng, loài thú cưng và tích chọn các dịch vụ đã thực hiện.'}
+                  {invoiceModalMode === 'walk_in'
+                    ? 'Tạo ca khám trực tiếp tại phòng khám — hỗ trợ chỉ định đa phòng, kê đơn thuốc và tự động đẩy dịch vụ sang Quầy Thu Ngân.'
+                    : 'Chọn các dịch vụ thực tế làm cho bé (bao gồm cả dịch vụ của phòng khác). Hệ thống sẽ tự động gộp vào 1 hóa đơn tại Quầy Thu Ngân.'}
                 </Text>
               </View>
               <TouchableOpacity style={styles.closeBtn} onPress={() => setInvoiceModalVisible(false)}>
@@ -1543,196 +1707,151 @@ export default function DoctorDashboardScreen({ route }) {
               <View style={{ paddingVertical: 40, alignItems: 'center' }}>
                 <ActivityIndicator size="large" color={COLORS.primary} />
                 <Text style={{ marginTop: 10, color: COLORS.textSecondary, fontSize: 13 }}>
-                  Đang tải dữ liệu dịch vụ và hóa đơn...
+                  Đang tải danh sách dịch vụ các phòng khám...
                 </Text>
               </View>
-            ) : invoiceStep === 'select_services' ? (
-              /* BƯỚC 1: CHỌN / ĐIỀU CHỈNH DỊCH VỤ & THÔNG TIN ĐƠN */
+            ) : (
               <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-                {invoiceMode === 'appointment' && invoiceTargetAppointment ? (
-                  <View style={styles.invoiceSummaryCard}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <View style={styles.invoiceTypeTagAppointment}>
-                        <Ionicons name="calendar-outline" size={13} color="#0F766E" />
-                        <Text style={styles.invoiceTypeTagAppointmentText}>Đơn theo lịch hẹn</Text>
-                      </View>
-                      <Text style={styles.invoiceRoomTag}>
-                        {invoiceTargetAppointment.room_code ? `${invoiceTargetAppointment.room_code} · ` : ''}
-                        {invoiceTargetAppointment.room_name}
+                {invoiceModalMode === 'walk_in' ? (
+                  <View style={styles.walkInFormBox}>
+                    <View style={styles.invoiceTypeTagWalkIn}>
+                      <Ionicons name="walk-outline" size={14} color="#B45309" />
+                      <Text style={styles.invoiceTypeTagWalkInText}>
+                        Khách khám vãng lai · Phòng tiếp nhận: {doctorRoom ? `${doctorRoom.room_code} - ${doctorRoom.room_name}` : 'Tự động theo dịch vụ'}
                       </Text>
                     </View>
-                    <InfoRow label="Khách hàng" value={invoiceTargetAppointment.customer_info} />
-                    <InfoRow
-                      label="Thú cưng"
-                      value={`${invoiceTargetAppointment.pet_name} (${formatSpeciesLabel(invoiceTargetAppointment.species)})`}
-                    />
-                    <InfoRow
-                      label="Dịch vụ đặt ban đầu"
-                      value={invoiceTargetAppointment.service_name || 'Chưa có'}
-                    />
-                  </View>
-                ) : (
-                  /* FORM TỐI GIẢN CHO KHÁCH VÃNG LAI (KHÔNG ĐẶT LỊCH TRƯỚC) */
-                  <View style={styles.invoiceWalkInFormBox}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                      <View style={styles.invoiceTypeTagWalkIn}>
-                        <Ionicons name="walk-outline" size={14} color="#0369A1" />
-                        <Text style={styles.invoiceTypeTagWalkInText}>Khách khám trực tiếp (Không đặt lịch)</Text>
+
+                    {/* Tra cứu SĐT khách hàng cũ / hoặc nhập mới */}
+                    <View style={{ marginBottom: 12 }}>
+                      <Text style={styles.fieldLabel}>
+                        Số điện thoại chủ nuôi (nhập để tự động tìm hồ sơ cũ nếu có)
+                      </Text>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TextInput
+                          value={walkInCustomerPhone}
+                          onChangeText={setWalkInCustomerPhone}
+                          onSubmitEditing={handleLookupWalkInCustomerByPhone}
+                          placeholder="VD: 0901234567"
+                          placeholderTextColor={COLORS.textTertiary || '#94A3B8'}
+                          keyboardType="phone-pad"
+                          style={[styles.input, { flex: 1 }]}
+                        />
+                        <TouchableOpacity
+                          style={{
+                            backgroundColor: COLORS.primary,
+                            paddingHorizontal: 14,
+                            borderRadius: 12,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            flexDirection: 'row',
+                            gap: 5,
+                          }}
+                          onPress={handleLookupWalkInCustomerByPhone}
+                          disabled={walkInSearchingPhone}
+                        >
+                          {walkInSearchingPhone ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <>
+                              <Ionicons name="search" size={16} color="#fff" />
+                              <Text style={{ color: '#fff', fontWeight: '800', fontSize: 13 }}>Tìm SĐT</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
                       </View>
-                      {doctorRoom ? (
-                        <Text style={styles.invoiceRoomTag}>
-                          {doctorRoom.room_code} · {doctorRoom.room_name}
+                      {walkInLookupMessage ? (
+                        <Text
+                          style={{
+                            marginTop: 6,
+                            fontSize: 12,
+                            fontWeight: '700',
+                            color: walkInFoundUser ? COLORS.primaryDark : '#B45309',
+                          }}
+                        >
+                          {walkInLookupMessage}
                         </Text>
                       ) : null}
                     </View>
 
-                    {/* Tìm theo Số điện thoại khách hàng (không bắt buộc) */}
-                    <Text style={styles.fieldLabel}>
-                      Tìm theo Số điện thoại khách hàng (không bắt buộc)
-                    </Text>
-                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                      <TextInput
-                        value={walkInPhoneSearch}
-                        onChangeText={setWalkInPhoneSearch}
-                        onSubmitEditing={handleLookupWalkInPhone}
-                        placeholder="Nhập SĐT khách đã có tài khoản..."
-                        placeholderTextColor={COLORS.textTertiary || '#94A3B8'}
-                        keyboardType="phone-pad"
-                        style={[styles.input, { flex: 1 }]}
-                      />
-                      <TouchableOpacity
-                        style={[
-                          styles.filterButton,
-                          {
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 6,
-                            paddingHorizontal: 14,
-                            justifyContent: 'center',
-                          },
-                          walkInPhoneSearching && { opacity: 0.7 },
-                        ]}
-                        onPress={handleLookupWalkInPhone}
-                        disabled={walkInPhoneSearching}
-                      >
-                        {walkInPhoneSearching ? (
-                          <ActivityIndicator color="#fff" size="small" />
-                        ) : (
-                          <>
-                            <Ionicons name="search-outline" size={16} color="#fff" />
-                            <Text style={styles.filterButtonText}>Tìm SĐT</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-                    </View>
+                    <Field
+                      label="Họ tên chủ nuôi *"
+                      value={walkInCustomerName}
+                      onChangeText={setWalkInCustomerName}
+                      placeholder="VD: Nguyễn Văn A"
+                    />
 
-                    {walkInMatchedUser && (
-                      <View
-                        style={{
-                          backgroundColor: '#F0FDFA',
-                          borderWidth: 1,
-                          borderColor: COLORS.primary,
-                          borderRadius: 12,
-                          padding: 12,
-                          marginBottom: 12,
-                        }}
-                      >
-                        <View
-                          style={{
-                            flexDirection: 'row',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            marginBottom: walkInMatchedPets.length > 0 ? 8 : 0,
-                          }}
-                        >
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}>
-                            <Ionicons name="checkmark-circle" size={16} color={COLORS.primary} />
-                            <Text style={{ color: COLORS.primaryDark, fontWeight: '800', fontSize: 13 }}>
-                              Đã liên kết TK: {walkInMatchedUser.full_name} ({walkInMatchedUser.phone})
-                            </Text>
-                          </View>
-                          <TouchableOpacity onPress={clearMatchedWalkInCustomer}>
-                            <Text style={{ color: COLORS.danger, fontSize: 12, fontWeight: '700' }}>
-                              Bỏ liên kết
+                    {/* Nếu khách cũ có sẵn thú cưng thì cho phép chọn nhanh */}
+                    {walkInFoundPets.length > 0 && (
+                      <View style={{ marginBottom: 12 }}>
+                        <Text style={styles.fieldLabel}>Chọn thú cưng của khách:</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                          {walkInFoundPets.map((p) => {
+                            const selected = Number(walkInSelectedPetId) === Number(p.id);
+                            return (
+                              <TouchableOpacity
+                                key={p.id}
+                                style={[
+                                  styles.speciesOptionBtn,
+                                  { flex: 0, paddingHorizontal: 14 },
+                                  selected && styles.speciesOptionBtnActive,
+                                ]}
+                                onPress={() => handleSelectWalkInPet(p)}
+                              >
+                                <FontAwesome5
+                                  name={getSpeciesIconName(p.species)}
+                                  size={13}
+                                  color={selected ? '#fff' : COLORS.textSecondary}
+                                />
+                                <Text style={[styles.speciesOptionText, selected && styles.speciesOptionTextActive]}>
+                                  {p.name} ({formatSpeciesLabel(p.species)})
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                          <TouchableOpacity
+                            style={[
+                              styles.speciesOptionBtn,
+                              { flex: 0, paddingHorizontal: 14 },
+                              !walkInSelectedPetId && styles.speciesOptionBtnActive,
+                            ]}
+                            onPress={() => handleSelectWalkInPet(null)}
+                          >
+                            <Ionicons
+                              name="add-circle-outline"
+                              size={15}
+                              color={!walkInSelectedPetId ? '#fff' : COLORS.textSecondary}
+                            />
+                            <Text style={[styles.speciesOptionText, !walkInSelectedPetId && styles.speciesOptionTextActive]}>
+                              Thú cưng mới
                             </Text>
                           </TouchableOpacity>
                         </View>
-
-                        {walkInMatchedPets.length > 0 && (
-                          <>
-                            <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.textSecondary, marginBottom: 6 }}>
-                              Chọn thú cưng của khách:
-                            </Text>
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                              {walkInMatchedPets.map((pet) => {
-                                const isPetSelected = Number(walkInSelectedPetId) === Number(pet.id);
-                                return (
-                                  <TouchableOpacity
-                                    key={pet.id}
-                                    style={[
-                                      {
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        gap: 6,
-                                        paddingVertical: 7,
-                                        paddingHorizontal: 12,
-                                        borderRadius: 20,
-                                        borderWidth: 1.5,
-                                        borderColor: isPetSelected ? COLORS.primary : COLORS.border,
-                                        backgroundColor: isPetSelected ? COLORS.primary : '#fff',
-                                      },
-                                    ]}
-                                    onPress={() => {
-                                      setWalkInSelectedPetId(pet.id);
-                                      if (['dog', 'cat', 'other'].includes(pet.species)) {
-                                        setWalkInSpecies(pet.species);
-                                      }
-                                    }}
-                                  >
-                                    <FontAwesome5
-                                      name={getSpeciesIconName(pet.species)}
-                                      size={12}
-                                      color={isPetSelected ? '#fff' : COLORS.primaryDark}
-                                    />
-                                    <Text
-                                      style={{
-                                        fontSize: 12,
-                                        fontWeight: '700',
-                                        color: isPetSelected ? '#fff' : COLORS.text,
-                                      }}
-                                    >
-                                      {pet.name} ({formatSpeciesLabel(pet.species)})
-                                    </Text>
-                                  </TouchableOpacity>
-                                );
-                              })}
-                            </View>
-                          </>
-                        )}
                       </View>
                     )}
 
                     <Field
-                      label="Tên người dùng (Khách hàng) *"
-                      value={walkInCustomerName}
-                      onChangeText={setWalkInCustomerName}
-                      placeholder="Nhập họ tên khách hàng..."
+                      label="Tên thú cưng *"
+                      value={walkInPetName}
+                      onChangeText={(val) => {
+                        setWalkInPetName(val);
+                        if (walkInSelectedPetId) setWalkInSelectedPetId(null);
+                      }}
+                      placeholder="VD: Miu, Lu, Cún..."
                     />
 
-                    <Text style={styles.fieldLabel}>Loài thú cưng khám *</Text>
-                    <View style={styles.speciesSelectorRow}>
+                    <Text style={styles.fieldLabel}>Loài thú cưng *</Text>
+                    <View style={styles.speciesSelectRow}>
                       {SPECIES_OPTIONS.map((opt) => {
-                        const active = walkInSpecies === opt.value;
+                        const active = walkInPetSpecies === opt.value;
                         return (
                           <TouchableOpacity
                             key={opt.value}
                             style={[styles.speciesOptionBtn, active && styles.speciesOptionBtnActive]}
-                            onPress={() => setWalkInSpecies(opt.value)}
-                            activeOpacity={0.8}
+                            onPress={() => setWalkInPetSpecies(opt.value)}
                           >
                             <FontAwesome5
                               name={opt.icon}
-                              size={15}
+                              size={14}
                               color={active ? '#fff' : COLORS.textSecondary}
                             />
                             <Text style={[styles.speciesOptionText, active && styles.speciesOptionTextActive]}>
@@ -1742,26 +1861,93 @@ export default function DoctorDashboardScreen({ route }) {
                         );
                       })}
                     </View>
+
+                    <Field
+                      label="Triệu chứng / Yêu cầu khám (không bắt buộc)"
+                      value={walkInNotes}
+                      onChangeText={setWalkInNotes}
+                      placeholder="VD: Bé bỏ ăn, nôn mửa, cần khám tổng quát..."
+                    />
+                  </View>
+                ) : (
+                  invoiceTargetAppointment && (
+                    <View style={styles.invoiceSummaryCard}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <View style={styles.invoiceTypeTagAppointment}>
+                          <Ionicons name="calendar-outline" size={13} color="#0F766E" />
+                          <Text style={styles.invoiceTypeTagAppointmentText}>Ca khám #{invoiceTargetAppointment.id}</Text>
+                        </View>
+                        <Text style={styles.invoiceRoomTag}>
+                          {invoiceTargetAppointment.room_code ? `${invoiceTargetAppointment.room_code} · ` : ''}
+                          {invoiceTargetAppointment.room_name}
+                        </Text>
+                      </View>
+                      <InfoRow label="Khách hàng" value={invoiceTargetAppointment.customer_info} />
+                      <InfoRow
+                        label="Thú cưng"
+                        value={`${invoiceTargetAppointment.pet_name} (${formatSpeciesLabel(invoiceTargetAppointment.species)})`}
+                      />
+                      <InfoRow
+                        label="Dịch vụ hiện tại"
+                        value={invoiceTargetAppointment.service_name || 'Chưa có'}
+                      />
+                    </View>
+                  )
+                )}
+
+                {/* BỘ LỌC THEO PHÒNG KHÁM (ĐỂ BÁC SĨ CHỈ ĐỊNH DỊCH VỤ ĐA PHÒNG DỄ DÀNG) */}
+                {allRooms.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>
+                      Lọc dịch vụ theo phòng khám:
+                    </Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      <TouchableOpacity
+                        style={[
+                          styles.chip,
+                          serviceRoomFilter === 'all' && styles.chipSelected,
+                        ]}
+                        onPress={() => setServiceRoomFilter('all')}
+                      >
+                        <Text style={serviceRoomFilter === 'all' ? styles.chipTextSelected : styles.chipText}>
+                          Tất cả phòng ({roomServices.length})
+                        </Text>
+                      </TouchableOpacity>
+                      {allRooms.map((r) => {
+                        const active = Number(serviceRoomFilter) === Number(r.id);
+                        return (
+                          <TouchableOpacity
+                            key={r.id}
+                            style={[styles.chip, active && styles.chipSelected]}
+                            onPress={() => setServiceRoomFilter(r.id)}
+                          >
+                            <Text style={active ? styles.chipTextSelected : styles.chipText}>
+                              {r.room_code} - {r.room_name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
                   </View>
                 )}
 
-                {/* DANH SÁCH DỊCH VỤ CỦA PHÒNG ĐỂ BÁC SĨ TÍCH CHỌN / ĐIỀU CHỈNH */}
+                {/* DANH SÁCH DỊCH VỤ ĐỂ BÁC SĨ TÍCH CHỌN / ĐIỀU CHỈNH */}
                 <View style={styles.serviceSelectSectionHeader}>
                   <Text style={styles.fieldLabel}>
-                    Chọn các dịch vụ thực tế đã làm ({selectedServiceIds.length}/{roomServices.length}) *
+                    Đã chọn ({selectedServiceIds.length}) dịch vụ thực hiện *
                   </Text>
-                  {invoiceMode === 'appointment' && bookedServiceIds.length > 0 && (
+                  {bookedServiceIds.length > 0 && (
                     <TouchableOpacity
                       onPress={() => setSelectedServiceIds([...bookedServiceIds])}
                       style={styles.resetBookedBtn}
                     >
                       <Ionicons name="refresh-outline" size={13} color={COLORS.primaryDark} />
-                      <Text style={styles.resetBookedBtnText}>Chọn lại theo lịch hẹn</Text>
+                      <Text style={styles.resetBookedBtnText}>Đặt lại mặc định</Text>
                     </TouchableOpacity>
                   )}
                 </View>
 
-                {roomServices.length === 0 ? (
+                {displayedServicesForModal.length === 0 ? (
                   <View style={styles.emptyMedicalBox}>
                     <Text style={styles.emptyMedicalText}>
                       Không tìm thấy danh sách dịch vụ của phòng khám.
@@ -1769,7 +1955,7 @@ export default function DoctorDashboardScreen({ route }) {
                   </View>
                 ) : (
                   <View style={styles.serviceChecklistWrap}>
-                    {roomServices.map((service) => {
+                    {displayedServicesForModal.map((service) => {
                       const sId = Number(service.id);
                       const isChecked = selectedServiceIds.includes(sId);
                       const wasBooked = bookedServiceIds.includes(sId);
@@ -1803,9 +1989,16 @@ export default function DoctorDashboardScreen({ route }) {
                               >
                                 {service.service_name}
                               </Text>
-                              {invoiceMode === 'appointment' && wasBooked && (
+                              {service.room_code ? (
+                                <View style={[styles.bookedDefaultTag, { backgroundColor: '#E0F2FE' }]}>
+                                  <Text style={[styles.bookedDefaultTagText, { color: '#0369A1' }]}>
+                                    {service.room_code} · {service.room_name}
+                                  </Text>
+                                </View>
+                              ) : null}
+                              {wasBooked && (
                                 <View style={styles.bookedDefaultTag}>
-                                  <Text style={styles.bookedDefaultTagText}>Đã chọn ở lịch hẹn</Text>
+                                  <Text style={styles.bookedDefaultTagText}>Đặt ban đầu</Text>
                                 </View>
                               )}
                             </View>
@@ -1830,17 +2023,10 @@ export default function DoctorDashboardScreen({ route }) {
                   </View>
                 )}
 
-                <Field
-                  label="Ghi chú hóa đơn (không bắt buộc)"
-                  value={invoiceNotes}
-                  onChangeText={setInvoiceNotes}
-                  placeholder="VD: Đã giảm trừ dịch vụ không thực hiện, khách chuyển khoản QR..."
-                />
-
-                {/* TỔNG TIỀN TẠM TÍNH */}
+                {/* TỔNG TIỀN TẠM TÍNH ĐẨY SANG THU NGÂN */}
                 <View style={styles.invoiceTotalPreviewBox}>
                   <View>
-                    <Text style={styles.invoiceTotalPreviewLabel}>Tổng số tiền cần thanh toán</Text>
+                    <Text style={styles.invoiceTotalPreviewLabel}>Tổng chi phí dự kiến chuyển Thu ngân</Text>
                     <Text style={styles.invoiceTotalPreviewSub}>
                       Đã chọn {selectedServiceIds.length} dịch vụ thực hiện
                     </Text>
@@ -1852,156 +2038,27 @@ export default function DoctorDashboardScreen({ route }) {
 
                 <TouchableOpacity
                   style={[styles.saveButton, invoiceSaving && { opacity: 0.7 }]}
-                  onPress={submitInvoice}
+                  onPress={invoiceModalMode === 'walk_in' ? submitWalkInAppointment : submitAssignedServices}
                   disabled={invoiceSaving}
                 >
                   {invoiceSaving ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                      <Ionicons name="qr-code-outline" size={19} color="#fff" />
+                      <Ionicons
+                        name={invoiceModalMode === 'walk_in' ? 'person-add-outline' : 'checkmark-done-circle-outline'}
+                        size={19}
+                        color="#fff"
+                      />
                       <Text style={styles.saveText}>
-                        Xác nhận số tiền & Tạo mã QR thanh toán
+                        {invoiceModalMode === 'walk_in'
+                          ? 'Tiếp nhận & Bắt đầu khám'
+                          : 'Lưu chỉ định dịch vụ (Đồng bộ sang Thu ngân)'}
                       </Text>
                     </View>
                   )}
                 </TouchableOpacity>
               </ScrollView>
-            ) : (
-              /* BƯỚC 2: HIỂN THỊ POPUP MÃ QR & THÔNG TIN ĐƠN HÀNG */
-              createdInvoice && (
-                <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-                  <View style={styles.qrShowcaseCard}>
-                    <View style={styles.qrBadgeHeader}>
-                      <Ionicons name="shield-checkmark" size={15} color="#0F766E" />
-                      <Text style={styles.qrBadgeHeaderText}>QUÉT MÃ QR ĐỂ THANH TOÁN</Text>
-                    </View>
-
-                    <View style={styles.qrImageFrame}>
-                      <Image
-                        source={{
-                          uri: `https://api.qrserver.com/v1/create-qr-code/?size=240x240&margin=8&data=${encodeURIComponent(
-                            `PETCARE_HOSPITAL|MA_HD:${createdInvoice.invoice_code}|KHACH:${createdInvoice.customer_name}|SO_TIEN:${Number(
-                              createdInvoice.total_amount || 0
-                            )}VND`
-                          )}`,
-                        }}
-                        style={styles.qrImage}
-                        resizeMode="contain"
-                      />
-                    </View>
-
-                    <Text style={styles.qrBankTitle}>BỆNH VIỆN THÚ Y ĐA KHOA PETCARE</Text>
-                    <Text style={styles.qrAmountBig}>
-                      {Number(createdInvoice.total_amount || 0).toLocaleString('vi-VN')} đ
-                    </Text>
-                    <View style={styles.qrTransferNotePill}>
-                      <Text style={styles.qrTransferNoteText}>
-                        Nội dung CK: <Text style={{ fontWeight: '800' }}>{createdInvoice.invoice_code}</Text>
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* THÔNG TIN ĐƠN HÀNG / HÓA ĐƠN */}
-                  <View style={styles.invoiceOrderDetailBox}>
-                    <Text style={styles.invoiceOrderSectionTitle}>Thông tin đơn hàng</Text>
-                    <InfoRow label="Mã hóa đơn" value={createdInvoice.invoice_code} />
-                    <InfoRow
-                      label="Loại hóa đơn"
-                      value={
-                        createdInvoice.invoice_type === 'walk_in'
-                          ? 'Khám trực tiếp (Không đặt lịch trước)'
-                          : 'Khám theo lịch hẹn'
-                      }
-                    />
-                    <InfoRow
-                      label="Khách hàng"
-                      value={
-                        createdInvoice.customer_phone
-                          ? `${createdInvoice.customer_name} (${createdInvoice.customer_phone})`
-                          : createdInvoice.customer_name
-                      }
-                    />
-                    {createdInvoice.pet_name ? (
-                      <InfoRow
-                        label="Thú cưng"
-                        value={`${createdInvoice.pet_name} (${formatSpeciesLabel(createdInvoice.pet_species)})`}
-                      />
-                    ) : (
-                      <InfoRow label="Loài khám" value={formatSpeciesLabel(createdInvoice.pet_species)} />
-                    )}
-                    <InfoRow
-                      label="Phòng khám"
-                      value={`${createdInvoice.room_code ? `${createdInvoice.room_code} - ` : ''}${
-                        createdInvoice.room_name || ''
-                      }`}
-                    />
-                    {createdInvoice.doctor_name ? (
-                      <InfoRow label="Bác sĩ phụ trách" value={createdInvoice.doctor_name} />
-                    ) : null}
-                    <InfoRow
-                      label="Thời gian lập"
-                      value={new Date(createdInvoice.created_at).toLocaleString('vi-VN')}
-                    />
-                    {createdInvoice.notes ? (
-                      <InfoRow label="Ghi chú" value={createdInvoice.notes} />
-                    ) : null}
-
-                    <View style={styles.invoiceItemsDivider} />
-                    <Text style={styles.invoiceOrderSectionTitle}>
-                      Chi tiết dịch vụ thực hiện ({(createdInvoice.items || []).length})
-                    </Text>
-
-                    {(createdInvoice.items || []).map((item, index) => (
-                      <View key={item.id || index} style={styles.invoiceBillItemRow}>
-                        <Text style={styles.invoiceBillItemName}>
-                          {index + 1}. {item.service_name}
-                        </Text>
-                        <Text style={styles.invoiceBillItemPrice}>
-                          {Number(item.unit_price || 0).toLocaleString('vi-VN')} đ
-                        </Text>
-                      </View>
-                    ))}
-
-                    <View style={styles.invoiceBillTotalRow}>
-                      <Text style={styles.invoiceBillTotalLabel}>TỔNG THANH TOÁN</Text>
-                      <Text style={styles.invoiceBillTotalValue}>
-                        {Number(createdInvoice.total_amount || 0).toLocaleString('vi-VN')} đ
-                      </Text>
-                    </View>
-                  </View>
-
-                  {createdInvoice.payment_status === 'pending' && (
-                    <View style={styles.qrFooterButtonRow}>
-                      {invoiceMode === 'appointment' && invoiceTargetAppointment && (
-                        <TouchableOpacity
-                          style={styles.qrSecondaryBtn}
-                          onPress={() => setInvoiceStep('select_services')}
-                          disabled={invoiceSaving}
-                        >
-                          <Ionicons name="options-outline" size={17} color={COLORS.primaryDark} />
-                          <Text style={styles.qrSecondaryBtnText}>Điều chỉnh lại dịch vụ</Text>
-                        </TouchableOpacity>
-                      )}
-
-                      <TouchableOpacity
-                        style={[styles.qrPrimaryDoneBtn, invoiceSaving && { opacity: 0.7 }]}
-                        onPress={completeInvoicePayment}
-                        disabled={invoiceSaving}
-                      >
-                        {invoiceSaving ? (
-                          <ActivityIndicator color="#fff" size="small" />
-                        ) : (
-                          <>
-                            <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
-                            <Text style={styles.qrPrimaryDoneBtnText}>Hoàn tất & Đóng</Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                </ScrollView>
-              )
             )}
           </View>
         </View>
@@ -2084,6 +2141,42 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 16,
     paddingHorizontal: 16,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  walkInHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#0284C7',
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    ...SHADOWS.sm,
+  },
+  walkInHeaderBtnText: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  walkInFormBox: {
+    backgroundColor: COLORS.background,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  speciesSelectRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 12,
   },
   eyebrow: {
     color: COLORS.primary,

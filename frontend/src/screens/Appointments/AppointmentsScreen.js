@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, FontAwesome5, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, SHADOWS } from '../../constants/theme';
 import ResponsiveContainer from '../../components/ResponsiveContainer';
+import DateTimeFilterBar, { getTodayStr, matchesDateTimeFilter } from '../../components/DateTimeFilterBar';
 import { useResponsive } from '../../utils/responsive';
 import {
   getMyAppointmentsApi,
@@ -27,6 +28,7 @@ import {
 } from '../../api/appointmentApi';
 import { getRoomsApi } from '../../api/roomApi';
 import { createReviewApi } from '../../api/reviewApi';
+import { getPetHealthRecordsApi } from '../../api/healthRecordApi';
 
 const STATUS_FILTERS = [
   ['all', 'Tất cả'],
@@ -48,16 +50,33 @@ export default function AppointmentsScreen({ navigation, route }) {
   // Filters
   const [statusFilter, setStatusFilter] = useState('all');
   const [roomFilter, setRoomFilter] = useState(null);
-  const [dateFilter, setDateFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState(getTodayStr());
+  const [timeFilter, setTimeFilter] = useState('');
   const [rooms, setRooms] = useState([]);
 
-  // Detail Modal & Review
+  // Detail Modal & Review & Health Records
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [showDetail, setShowDetail] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [petHealthRecords, setPetHealthRecords] = useState([]);
+  const [loadingHealthRecords, setLoadingHealthRecords] = useState(false);
+
+  useEffect(() => {
+    if (showDetail && selectedAppointment?.pet_id) {
+      setLoadingHealthRecords(true);
+      getPetHealthRecordsApi(selectedAppointment.pet_id)
+        .then((res) => {
+          setPetHealthRecords(res.data?.success ? res.data.data || [] : []);
+        })
+        .catch(() => setPetHealthRecords([]))
+        .finally(() => setLoadingHealthRecords(false));
+    } else {
+      setPetHealthRecords([]);
+    }
+  }, [showDetail, selectedAppointment?.pet_id]);
 
   // Tự động tải lại danh sách lịch hẹn mỗi khi người dùng chuyển sang tab Lịch hẹn hoặc navigate tới
   useFocusEffect(
@@ -132,21 +151,38 @@ export default function AppointmentsScreen({ navigation, route }) {
     setRefreshing(false);
   };
 
-  const handleCancelAppointment = (appointmentId) => {
+  const handleCancelAppointment = (aptOrId) => {
+    const targetApt =
+      typeof aptOrId === 'object' && aptOrId !== null
+        ? aptOrId
+        : appointments.find((a) => Number(a.id) === Number(aptOrId));
+    const appointmentId = targetApt ? targetApt.id : aptOrId;
+    const depositAmt = Number(targetApt?.deposit_amount || targetApt?.invoice_deposit_amount || 0);
+
+    const alertTitle =
+      depositAmt > 0 ? 'Cảnh báo Mất Cọc 50% khi Tự Hủy' : 'Hủy lịch hẹn';
+    const alertMessage =
+      depositAmt > 0
+        ? `Lịch hẹn này đã đặt cọc 50% (${depositAmt.toLocaleString('vi-VN')} đ).\n\n• Nếu bạn tự bấm hủy trực tiếp trên ứng dụng, bạn sẽ bị MẤT 100% TIỀN ĐẶT CỌC (không được hoàn tiền).\n• Nếu muốn hủy lịch và được hỗ trợ HOÀN CỌC, vui lòng KHÔNG bấm hủy tại đây mà liên hệ trực tiếp SĐT Bệnh viện: 1900 6868 (hoặc 024 3999 8888) để Bác sĩ/Viện hỗ trợ hủy lịch và hoàn cọc cho bạn.`
+        : 'Bạn có chắc chắn muốn hủy lịch hẹn này không?';
+
     Alert.alert(
-      'Hủy lịch hẹn',
-      'Bạn có chắc chắn muốn hủy lịch hẹn này không?',
+      alertTitle,
+      alertMessage,
       [
-        { text: 'Không', style: 'cancel' },
         {
-          text: 'Hủy lịch',
+          text: depositAmt > 0 ? 'Giữ lịch (Gọi Viện 1900 6868)' : 'Không',
+          style: 'cancel',
+        },
+        {
+          text: depositAmt > 0 ? 'Chấp nhận mất cọc & Hủy' : 'Hủy lịch',
           style: 'destructive',
           onPress: async () => {
             try {
               setUpdatingId(appointmentId);
               const response = await cancelAppointmentApi(appointmentId);
               if (response.data.success) {
-                Alert.alert('Thành công', 'Đã hủy lịch hẹn');
+                Alert.alert('Thành công', response.data.message || 'Đã hủy lịch hẹn');
                 await loadAppointments();
                 setShowDetail(false);
               }
@@ -237,7 +273,10 @@ export default function AppointmentsScreen({ navigation, route }) {
     }
   };
 
-  const getStatusBadgeMeta = (status) => {
+  const getStatusBadgeMeta = (status, notes = '') => {
+    if (status === 'cancelled' && String(notes || '').includes('[VẮNG MẶT')) {
+      return { bg: '#FEF3C7', textColor: '#B45309', label: 'Vắng mặt (Không đến)' };
+    }
     switch (status) {
       case 'pending':
         return { bg: '#FEF3C7', textColor: '#B45309', label: 'Chờ duyệt' };
@@ -260,10 +299,21 @@ export default function AppointmentsScreen({ navigation, route }) {
         rating: reviewRating,
         comment: reviewComment || undefined,
       });
+      const savedComment = reviewComment ? reviewComment.trim() : '';
+      const savedRating = reviewRating;
+      setSelectedAppointment((prev) =>
+        prev
+          ? {
+              ...prev,
+              review_rating: savedRating,
+              review_comment: savedComment,
+            }
+          : null
+      );
+      await loadAppointments(false);
       Alert.alert('Cảm ơn bạn!', 'Đánh giá của bạn đã được ghi nhận.');
       setReviewComment('');
       setReviewRating(5);
-      setShowDetail(false);
     } catch (err) {
       Alert.alert('Lỗi', err.response?.data?.message || 'Không thể gửi đánh giá');
     } finally {
@@ -271,9 +321,12 @@ export default function AppointmentsScreen({ navigation, route }) {
     }
   };
 
-  const filteredAppointments = userRole === 'customer' && statusFilter !== 'all'
-    ? appointments.filter(a => a.status === statusFilter)
-    : appointments;
+  const filteredAppointments = appointments.filter((a) => {
+    if (userRole === 'customer' && statusFilter !== 'all' && a.status !== statusFilter) {
+      return false;
+    }
+    return matchesDateTimeFilter(a.appointment_datetime, dateFilter, timeFilter);
+  });
 
   return (
     <ResponsiveContainer style={styles.container}>
@@ -288,31 +341,22 @@ export default function AppointmentsScreen({ navigation, route }) {
         </Text>
       </View>
 
-      {/* Customer Status Filter Pills */}
+      {/* Customer Status Filter Pills + Date/Time Filter */}
       {userRole === 'customer' && (
         <View style={styles.filterContainer}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.filterScrollView}
-            contentContainerStyle={styles.filterPillRow}
-          >
-            {STATUS_FILTERS.map(([value, label]) => {
-              const isSelected = statusFilter === value;
-              return (
-                <TouchableOpacity
-                  key={value}
-                  style={[styles.filterPill, isSelected && styles.filterPillActive]}
-                  onPress={() => setStatusFilter(value)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.filterPillText, isSelected && styles.filterPillTextActive]}>
-                    {label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          <DateTimeFilterBar
+            selectedDate={dateFilter}
+            onDateChange={setDateFilter}
+            selectedTime={timeFilter}
+            onTimeChange={setTimeFilter}
+            showTimeFilter={true}
+            allowAllDates={true}
+            dateLabel="Ngày khám:"
+            timeLabel="Giờ khám:"
+            statusOptions={STATUS_FILTERS}
+            statusFilter={statusFilter}
+            onStatusChange={setStatusFilter}
+          />
         </View>
       )}
 
@@ -344,30 +388,18 @@ export default function AppointmentsScreen({ navigation, route }) {
             ))}
           </ScrollView>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.filterScrollView}
-            contentContainerStyle={styles.chipRow}
-          >
-            {STATUS_FILTERS.map(([value, label]) => (
-              <TouchableOpacity
-                key={value}
-                style={[styles.chip, statusFilter === value && styles.chipSelected]}
-                onPress={() => setStatusFilter(value)}
-              >
-                <Text style={statusFilter === value ? styles.chipTextSelected : styles.chipText}>{label}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <TextInput
-            style={styles.dateFilterInput}
-            value={dateFilter}
-            onChangeText={setDateFilter}
-            placeholder="Lọc theo ngày (YYYY-MM-DD), để trống = tất cả"
-            placeholderTextColor={COLORS.textMuted}
-            maxLength={10}
+          <DateTimeFilterBar
+            selectedDate={dateFilter}
+            onDateChange={setDateFilter}
+            selectedTime={timeFilter}
+            onTimeChange={setTimeFilter}
+            showTimeFilter={true}
+            allowAllDates={true}
+            dateLabel="Ngày khám:"
+            timeLabel="Giờ khám:"
+            statusOptions={STATUS_FILTERS}
+            statusFilter={statusFilter}
+            onStatusChange={setStatusFilter}
           />
         </View>
       )}
@@ -420,7 +452,7 @@ export default function AppointmentsScreen({ navigation, route }) {
 
           <View style={[styles.appointmentGrid, isTabletOrDesktop && styles.appointmentGridDesktop]}>
             {filteredAppointments.map((apt) => {
-              const badge = getStatusBadgeMeta(apt.status);
+              const badge = getStatusBadgeMeta(apt.status, apt.notes);
               const dateObj = new Date(apt.appointment_datetime);
               const dateFormatted = dateObj.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' });
               const timeFormatted = dateObj.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
@@ -464,9 +496,30 @@ export default function AppointmentsScreen({ navigation, route }) {
                       <Text style={styles.serviceText} numberOfLines={1}>{apt.service_name}</Text>
                     </View>
                     {apt.price && (
-                      <View style={styles.infoRow}>
+                      <View style={[styles.infoRow, { flexWrap: 'wrap' }]}>
                         <Ionicons name="cash-outline" size={14} color={COLORS.primaryDark} />
                         <Text style={styles.priceText}>{Number(apt.price).toLocaleString('vi-VN')} đ</Text>
+                        {Number(apt.deposit_amount || apt.invoice_deposit_amount || 0) > 0 && (
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontWeight: '700',
+                              color:
+                                apt.deposit_status === 'forfeited'
+                                  ? '#DC2626'
+                                  : apt.deposit_status === 'refunded'
+                                  ? '#0369A1'
+                                  : '#B45309',
+                              marginLeft: 6,
+                            }}
+                          >
+                            {apt.deposit_status === 'forfeited'
+                              ? `• Mất cọc 50%: ${Number(apt.deposit_amount || apt.invoice_deposit_amount || 0).toLocaleString('vi-VN')} đ`
+                              : apt.deposit_status === 'refunded'
+                              ? `• Hoàn cọc 50%: ${Number(apt.deposit_amount || apt.invoice_deposit_amount || 0).toLocaleString('vi-VN')} đ`
+                              : `• Đã cọc 50%: ${Number(apt.deposit_amount || apt.invoice_deposit_amount || 0).toLocaleString('vi-VN')} đ`}
+                          </Text>
+                        )}
                       </View>
                     )}
                     {isAdmin && (
@@ -487,19 +540,41 @@ export default function AppointmentsScreen({ navigation, route }) {
 
                   {/* Customer cancel action */}
                   {userRole === 'customer' && apt.status === 'pending' && (
-                    <TouchableOpacity
-                      style={styles.cancelButton}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        handleCancelAppointment(apt.id);
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Ionicons name="close-circle-outline" size={14} color="#B91C1C" style={{ marginRight: 4 }} />
-                        <Text style={styles.cancelButtonText}>Hủy lịch hẹn</Text>
-                      </View>
-                    </TouchableOpacity>
+                    <View>
+                      {Number(apt.deposit_amount || apt.invoice_deposit_amount || 0) > 0 && (
+                        <View
+                          style={{
+                            marginTop: 8,
+                            padding: 8,
+                            borderRadius: 8,
+                            backgroundColor: '#FFFBEB',
+                            borderWidth: 1,
+                            borderColor: '#FDE68A',
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, color: '#92400E', lineHeight: 16, fontWeight: '600' }}>
+                            📞 Muốn hủy hoàn cọc? Vui lòng liên hệ trực tiếp SĐT Viện: 1900 6868 / 024 3999 8888 (Tự bấm hủy bên dưới sẽ mất 100% cọc).
+                          </Text>
+                        </View>
+                      )}
+                      <TouchableOpacity
+                        style={styles.cancelButton}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleCancelAppointment(apt);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Ionicons name="close-circle-outline" size={14} color="#B91C1C" style={{ marginRight: 4 }} />
+                          <Text style={styles.cancelButtonText}>
+                            {Number(apt.deposit_amount || apt.invoice_deposit_amount || 0) > 0
+                              ? 'Hủy lịch hẹn (Mất cọc 50%)'
+                              : 'Hủy lịch hẹn'}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    </View>
                   )}
 
                   {/* Delete cancelled appointment action */}
@@ -591,6 +666,54 @@ export default function AppointmentsScreen({ navigation, route }) {
                     <Text style={[styles.sectionValue, { fontWeight: 'bold', color: COLORS.primaryDark }]}>
                       {Number(selectedAppointment.price).toLocaleString('vi-VN')} đ
                     </Text>
+                    {Number(selectedAppointment.deposit_amount || selectedAppointment.invoice_deposit_amount || 0) > 0 && (
+                      <View
+                        style={{
+                          marginTop: 8,
+                          padding: 10,
+                          borderRadius: 10,
+                          backgroundColor:
+                            selectedAppointment.deposit_status === 'forfeited'
+                              ? '#FEF2F2'
+                              : selectedAppointment.deposit_status === 'refunded'
+                              ? '#E0F2FE'
+                              : '#FFFBEB',
+                          borderWidth: 1,
+                          borderColor:
+                            selectedAppointment.deposit_status === 'forfeited'
+                              ? '#FECACA'
+                              : selectedAppointment.deposit_status === 'refunded'
+                              ? '#BAE6FD'
+                              : '#FDE68A',
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 12.5,
+                            fontWeight: '800',
+                            color:
+                              selectedAppointment.deposit_status === 'forfeited'
+                                ? '#B91C1C'
+                                : selectedAppointment.deposit_status === 'refunded'
+                                ? '#0369A1'
+                                : '#B45309',
+                          }}
+                        >
+                          {selectedAppointment.deposit_status === 'forfeited'
+                            ? `Mất cọc 50%: ${Number(selectedAppointment.deposit_amount || selectedAppointment.invoice_deposit_amount || 0).toLocaleString('vi-VN')} đ (Khách tự hủy / Vắng mặt)`
+                            : selectedAppointment.deposit_status === 'refunded'
+                            ? `Được hoàn cọc 50%: ${Number(selectedAppointment.deposit_amount || selectedAppointment.invoice_deposit_amount || 0).toLocaleString('vi-VN')} đ (Bác sĩ/Viện hủy lịch)`
+                            : `Đã đặt cọc 50%: ${Number(selectedAppointment.deposit_amount || selectedAppointment.invoice_deposit_amount || 0).toLocaleString('vi-VN')} đ`}
+                        </Text>
+                        {userRole === 'customer' &&
+                          (selectedAppointment.status === 'pending' || selectedAppointment.status === 'confirmed') &&
+                          selectedAppointment.deposit_status === 'paid' && (
+                            <Text style={{ fontSize: 11.5, color: '#78350F', marginTop: 4, lineHeight: 17 }}>
+                              📞 Nếu có sự cố cần hủy lịch và hoàn cọc, vui lòng liên hệ trực tiếp SĐT Bệnh viện: 1900 6868 (hoặc 024 3999 8888) để được Bác sĩ/Viện hỗ trợ hủy và hoàn cọc. Tự bấm hủy trên ứng dụng sẽ mất 100% tiền cọc.
+                            </Text>
+                          )}
+                      </View>
+                    )}
                   </View>
                 )}
 
@@ -638,6 +761,88 @@ export default function AppointmentsScreen({ navigation, route }) {
                     <Text style={styles.sectionValue}>{selectedAppointment.notes}</Text>
                   </View>
                 )}
+
+                {/* Hồ sơ kết quả khám & Bệnh án của bé */}
+                <View style={styles.detailSection}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <FontAwesome5 name="notes-medical" size={14} color={COLORS.primaryDark} style={{ marginRight: 6 }} />
+                      <Text style={styles.sectionLabel}>
+                        Hồ sơ kết quả khám ({petHealthRecords.length}):
+                      </Text>
+                    </View>
+                    {loadingHealthRecords && <ActivityIndicator size="small" color={COLORS.primary} />}
+                  </View>
+
+                  {petHealthRecords.length === 0 && !loadingHealthRecords ? (
+                    <Text style={{ color: COLORS.textSecondary, fontSize: 13, fontStyle: 'italic' }}>
+                      Chưa có hồ sơ kết quả khám nào được bác sĩ cập nhật cho bé.
+                    </Text>
+                  ) : (
+                    <View style={{ gap: 8 }}>
+                      {petHealthRecords.map((rec) => (
+                        <View
+                          key={`apt-rec-${rec.id}`}
+                          style={{
+                            backgroundColor: COLORS.background,
+                            borderRadius: 12,
+                            padding: 12,
+                            borderWidth: 1,
+                            borderColor: COLORS.border,
+                            gap: 4,
+                          }}
+                        >
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                            <Text style={{ fontWeight: '800', color: COLORS.text, fontSize: 13, flex: 1 }}>
+                              {rec.title}
+                            </Text>
+                            {rec.doctor_room_code ? (
+                              <View style={{ backgroundColor: '#E0F2FE', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                                <Text style={{ color: '#0369A1', fontSize: 11, fontWeight: '800' }}>
+                                  {rec.doctor_room_code}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+
+                          <Text style={{ color: COLORS.textSecondary, fontSize: 12 }}>
+                            {rec.performed_date ? new Date(rec.performed_date).toLocaleDateString('vi-VN') : ''} · BS.{' '}
+                            {rec.doctor_name || rec.doctor_info || 'Phụ trách'}
+                          </Text>
+
+                          {rec.diagnosis ? (
+                            <Text style={{ color: COLORS.text, fontSize: 13, lineHeight: 18, marginTop: 2 }}>
+                              <Text style={{ fontWeight: '700', color: COLORS.textSecondary }}>Chẩn đoán / Kết quả: </Text>
+                              {rec.diagnosis}
+                            </Text>
+                          ) : null}
+
+                          {rec.treatment_plan ? (
+                            <View
+                              style={{
+                                backgroundColor: '#F0FDFA',
+                                padding: 8,
+                                borderRadius: 8,
+                                marginTop: 4,
+                              }}
+                            >
+                              <Text style={{ color: '#0F766E', fontSize: 12, lineHeight: 17 }}>
+                                <Text style={{ fontWeight: '800' }}>Hướng điều trị & Dặn dò: </Text>
+                                {rec.treatment_plan}
+                              </Text>
+                            </View>
+                          ) : null}
+
+                          {rec.next_due_date ? (
+                            <Text style={{ color: '#D97706', fontSize: 12, fontWeight: '700', marginTop: 2 }}>
+                              Hẹn tái khám: {new Date(rec.next_due_date).toLocaleDateString('vi-VN')}
+                            </Text>
+                          ) : null}
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
 
                 {/* Doctor actions */}
                 {userRole === 'doctor' && (
@@ -718,40 +923,88 @@ export default function AppointmentsScreen({ navigation, route }) {
                 {/* Customer Review Section */}
                 {userRole === 'customer' && selectedAppointment.status === 'completed' && (
                   <View style={styles.reviewBox}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                      <Ionicons name="star" size={16} color="#F59E0B" style={{ marginRight: 6 }} />
-                      <Text style={styles.reviewBoxTitle}>Đánh giá ca khám này:</Text>
-                    </View>
-                    <View style={styles.starRow}>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <TouchableOpacity key={star} onPress={() => setReviewRating(star)} style={{ padding: 4 }}>
-                          <Ionicons
-                            name={star <= reviewRating ? 'star' : 'star-outline'}
-                            size={26}
-                            color="#F59E0B"
-                          />
+                    {selectedAppointment.review_rating ? (
+                      <>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Ionicons name="star" size={16} color="#F59E0B" style={{ marginRight: 6 }} />
+                            <Text style={styles.reviewBoxTitle}>Kết quả đánh giá của bạn:</Text>
+                          </View>
+                          <View style={{ backgroundColor: '#DCFCE7', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                            <Text style={{ color: '#15803D', fontSize: 11, fontWeight: '800' }}>Đã đánh giá</Text>
+                          </View>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Ionicons
+                              key={star}
+                              name={star <= Number(selectedAppointment.review_rating) ? 'star' : 'star-outline'}
+                              size={20}
+                              color="#F59E0B"
+                            />
+                          ))}
+                          <Text style={{ marginLeft: 6, fontWeight: '800', color: COLORS.text, fontSize: 13 }}>
+                            {selectedAppointment.review_rating}/5 sao
+                          </Text>
+                        </View>
+                        {selectedAppointment.review_comment ? (
+                          <View
+                            style={{
+                              backgroundColor: COLORS.background,
+                              padding: 10,
+                              borderRadius: 10,
+                              borderWidth: 1,
+                              borderColor: COLORS.border,
+                            }}
+                          >
+                            <Text style={{ color: COLORS.text, fontSize: 13, fontStyle: 'italic' }}>
+                              "{selectedAppointment.review_comment}"
+                            </Text>
+                          </View>
+                        ) : (
+                          <Text style={{ color: COLORS.textSecondary, fontSize: 12, fontStyle: 'italic' }}>
+                            Bạn không để lại nhận xét thêm.
+                          </Text>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                          <Ionicons name="star" size={16} color="#F59E0B" style={{ marginRight: 6 }} />
+                          <Text style={styles.reviewBoxTitle}>Đánh giá ca khám này:</Text>
+                        </View>
+                        <View style={styles.starRow}>
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <TouchableOpacity key={star} onPress={() => setReviewRating(star)} style={{ padding: 4 }}>
+                              <Ionicons
+                                name={star <= reviewRating ? 'star' : 'star-outline'}
+                                size={26}
+                                color="#F59E0B"
+                              />
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                        <TextInput
+                          style={styles.reviewInput}
+                          placeholder="Nhập cảm nhận của bạn về sự chăm sóc của bác sĩ..."
+                          placeholderTextColor={COLORS.textMuted}
+                          value={reviewComment}
+                          onChangeText={setReviewComment}
+                          multiline
+                        />
+                        <TouchableOpacity
+                          style={[styles.actionButton, styles.confirmButton]}
+                          onPress={submitReview}
+                          disabled={submittingReview}
+                        >
+                          {submittingReview ? (
+                            <ActivityIndicator color="#fff" />
+                          ) : (
+                            <Text style={styles.actionButtonText}>Gửi Đánh Giá</Text>
+                          )}
                         </TouchableOpacity>
-                      ))}
-                    </View>
-                    <TextInput
-                      style={styles.reviewInput}
-                      placeholder="Nhập cảm nhận của bạn về sự chăm sóc của bác sĩ..."
-                      placeholderTextColor={COLORS.textMuted}
-                      value={reviewComment}
-                      onChangeText={setReviewComment}
-                      multiline
-                    />
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.confirmButton]}
-                      onPress={submitReview}
-                      disabled={submittingReview}
-                    >
-                      {submittingReview ? (
-                        <ActivityIndicator color="#fff" />
-                      ) : (
-                        <Text style={styles.actionButtonText}>Gửi Đánh Giá</Text>
-                      )}
-                    </TouchableOpacity>
+                      </>
+                    )}
                   </View>
                 )}
               </ScrollView>

@@ -32,10 +32,8 @@ exports.createPrescription = async (req, res) => {
     if (records.length === 0) {
       return res.status(404).json({ success: false, message: 'Không tìm thấy bệnh án' });
     }
-    // Bác sĩ chỉ được kê đơn cho chính ca khám mình thực hiện
-    if (records[0].doctor_id !== req.user.id) {
-      return res.status(403).json({ success: false, message: 'Bạn chỉ có thể kê đơn cho bệnh án do chính mình khám' });
-    }
+    // Cho phép Bác sĩ phòng tiếp nhận chính kê đơn thuốc tổng hợp dựa trên bệnh án của bé
+    // (bao gồm bệnh án do chính bác sĩ lập hoặc hồ sơ kết quả chuyên khoa từ phòng phối hợp chuyển về)
 
     const medicineIds = [...new Set(items.map((i) => Number(i.medicine_id)))];
     const placeholders = medicineIds.map(() => '?').join(',');

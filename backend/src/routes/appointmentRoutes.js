@@ -23,12 +23,12 @@ router.delete('/cancelled/:id', appointmentController.deleteCancelledAppointment
 router.delete('/:id', appointmentController.cancelAppointment);
 
 /**
- * Doctor & Admin routes
- * Doctor: chỉ thấy/ cập nhật được lịch của phòng khám mình phụ trách (lọc ở controller)
- * Admin: xem toàn viện
+ * Doctor, Cashier & Admin routes
  */
 router.get('/analytics', requireRole('admin'), appointmentController.getHospitalAnalytics);
-router.get('/', requireRole('doctor', 'admin'), appointmentController.getAllAppointments);
+router.post('/walk-in', requireRole('doctor', 'cashier', 'admin'), appointmentController.createWalkInAppointment);
+router.get('/', requireRole('doctor', 'cashier', 'admin'), appointmentController.getAllAppointments);
 router.patch('/:id/status', requireRole('doctor', 'admin'), appointmentController.updateStatus);
+router.put('/:id/services', requireRole('doctor', 'cashier', 'admin'), appointmentController.updateAppointmentServices);
 
 module.exports = router;

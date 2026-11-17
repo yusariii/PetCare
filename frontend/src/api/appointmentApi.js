@@ -22,7 +22,7 @@ export const getMyAppointmentsApi = async () => {
 };
 
 /**
- * Get all appointments (doctor view)
+ * Get all appointments (doctor/cashier/admin view)
  */
 export const getAllAppointmentsApi = async (params) => {
   return client.get('/appointments', { params });
@@ -36,7 +36,26 @@ export const updateAppointmentStatusApi = async (appointmentId, data) => {
 };
 
 /**
- * BR09: Hospital analytics dashboard (doctor only)
+ * Cập nhật / chỉ định dịch vụ thực tế của ca khám (hỗ trợ dịch vụ đa phòng)
+ */
+export const updateAppointmentServicesApi = async (appointmentId, payloadOrIds) => {
+  const serviceIds = Array.isArray(payloadOrIds)
+    ? payloadOrIds
+    : Array.isArray(payloadOrIds?.service_ids)
+    ? payloadOrIds.service_ids
+    : [];
+  return client.put(`/appointments/${appointmentId}/services`, { service_ids: serviceIds });
+};
+
+/**
+ * Tiếp nhận ca khám vãng lai trực tiếp tại phòng khám (Doctor / Cashier / Admin)
+ */
+export const createWalkInAppointmentApi = async (payload) => {
+  return client.post('/appointments/walk-in', payload);
+};
+
+/**
+ * BR09: Hospital analytics dashboard (admin only)
  */
 export const getHospitalAnalyticsApi = async () => {
   return client.get('/appointments/analytics');

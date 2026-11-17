@@ -119,10 +119,15 @@ exports.getPetHealthRecords = async (req, res) => {
     const [records] = await db.query(`
       SELECT 
         hr.*,
+        u.full_name as doctor_name,
+        cr.id as doctor_room_id,
+        cr.room_code as doctor_room_code,
+        cr.room_name as doctor_room_name,
         CONCAT(u.full_name, ' (', u.email, ')') as doctor_info,
-        (SELECT id FROM Prescriptions WHERE health_record_id = hr.id) as prescription_id
+        (SELECT id FROM Prescriptions WHERE health_record_id = hr.id LIMIT 1) as prescription_id
       FROM Health_Records hr
       JOIN Users u ON hr.doctor_id = u.id
+      LEFT JOIN Clinic_Rooms cr ON cr.doctor_id = u.id
       WHERE hr.pet_id = ?
       ORDER BY hr.performed_date DESC, hr.created_at DESC
     `, [pet_id]);

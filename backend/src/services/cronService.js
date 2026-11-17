@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const db = require('../config/db');
+const { sweepOverdueAppointments } = require('../controllers/appointmentController');
 
 /**
  * BR06: Quét Lịch & Gửi Thông báo Tự động
@@ -77,6 +78,11 @@ exports.initCronJobs = () => {
     } finally {
       if (connection) connection.release();
     }
+  });
+
+  // Tự động quét và đóng các lịch hẹn quá ngày (No-Show / Quá hạn chưa xác nhận) mỗi giờ và lúc 00:05 sáng hàng ngày
+  cron.schedule('5 * * * *', async () => {
+    await sweepOverdueAppointments();
   });
 
   // Optional: Cleanup old completed/cancelled appointments (weekly)
